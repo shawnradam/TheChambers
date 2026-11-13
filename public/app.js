@@ -1081,7 +1081,8 @@ let thinkingTimer = null;
 let thinkingIndex = Math.floor(Math.random() * THINKING_QUOTES.length);
 
 function thinkingMarkup(text) {
-  return `<div class="thinking" role="status"><span class="c-mark" aria-hidden="true"><span class="c-letter">C</span><span class="c-spark s1"></span><span class="c-spark s2"></span><span class="c-spark s3"></span></span><span class="thinking-text">${esc(text)}</span></div>`;
+  const drops = [1, 2, 3, 4, 5, 6].map((n) => `<span class="c-drop d${n}"></span>`).join('');
+  return `<div class="thinking" role="status"><span class="c-mark" aria-hidden="true"><span class="c-splash"></span><span class="c-letter">C</span>${drops}<span class="c-spark s1"></span><span class="c-spark s2"></span></span><span class="thinking-text">${esc(text)}</span></div>`;
 }
 
 function startThinking(bubble) {
