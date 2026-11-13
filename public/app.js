@@ -6,6 +6,15 @@
 const $ = (selector) => document.querySelector(selector);
 const icon = (name, cls = 'icon') => `<svg class="${cls}"><use href="#i-${name}"></use></svg>`;
 
+// On a phone, programmatic focus is the enemy: every view that opens with a field in it would
+// pop the soft keyboard. Tapping a field still focuses it natively, so the keyboard appears only
+// when the user actually wants to type.
+if (window.matchMedia('(pointer: coarse)').matches) {
+  HTMLElement.prototype.focus = function () {
+    /* deliberately inert on touch devices */
+  };
+}
+
 const els = {
   app: $('#app'),
   sidebar: $('#sidebar'),
@@ -26,6 +35,8 @@ const els = {
   projectList: $('#project-list'),
   hostInfo: $('#host-info'),
   settings: $('#settings'),
+  updates: $('#updates'),
+  updateDot: $('#update-dot'),
   exportBtn: $('#export'),
   menu: $('#menu'),
   title: $('#conv-title'),
@@ -45,6 +56,7 @@ const els = {
   stop: $('#stop'),
   attach: $('#attach'),
   fileInput: $('#file-input'),
+  attachments: $('#attachments'),
   permissions: $('#permissions'),
   goal: $('#goal'),
   modelBtn: $('#model-btn'),
@@ -100,12 +112,22 @@ const state = {
   browserUrl: '',
   health: null,
   version: '—',
+  update: null,
+  attachments: [],
 };
 
 const live = {bubble: null, tools: new Map(), toolsEl: null, text: '', model: '', timer: null, pinned: true, started: 0};
 
+function lastModelOf(messages) {
+  for (let i = (messages || []).length - 1; i >= 0; i -= 1) {
+    if (messages[i].role === 'assistant' && messages[i].model) return messages[i].model;
+  }
+  return '';
+}
+
 function contextLimit() {
-  const model = state.model || (state.conversation && state.conversation.model) || '';
+  const model =
+    state.model || (state.conversation && state.conversation.model) || lastModelOf(state.messages) || '';
   if (!model) return 200000;
   const match = (state.models && state.models.groups ? state.models.groups : [])
     .flatMap((group) => group.models || [])
@@ -1059,7 +1081,7 @@ function renderThread(messages) {
 
 function showEmpty() {
   placeComposer(true);
-  els.title.textContent = '';
+  els.title.textContent = 'New session';
   els.thread.textContent = '';
   state.messages = [];
   state.lastUsage = null;
@@ -1081,7 +1103,11 @@ async function openConversation(id) {
     state.lastUsage = lastUsageOf(state.messages);
     state.signature = signatureOf(state.messages);
     els.title.textContent = conv.title || 'Conversation';
-    if (conv.model) setModelLabel(conv.model);
+    const model = conv.model || lastModelOf(state.messages);
+    if (model) {
+      conv.model = model;
+      setModelLabel(model);
+    }
     openConversationView();
     renderThread(state.messages);
     updateContextRing();
@@ -1094,14 +1120,20 @@ async function openConversation(id) {
   }
 }
 
-async function refreshConversation() {
-  if (!state.activeId || state.busy) return;
+async function refreshConversation(force = false) {
+  if (!state.activeId || (state.busy && !force)) return;
   try {
     const conv = await api(`/api/conversations/${state.activeId}`);
     state.messages = conv.messages || [];
     state.conversation = conv;
     state.lastUsage = lastUsageOf(state.messages);
     state.signature = signatureOf(state.messages);
+    if (conv.title) els.title.textContent = conv.title;
+    const model = conv.model || lastModelOf(state.messages);
+    if (model) {
+      conv.model = model;
+      setModelLabel(model);
+    }
     renderThread(state.messages);
     updateContextRing();
     renderSessionCard();
@@ -1139,6 +1171,11 @@ async function pollConversation() {
     renderSessionCard();
     if (state.panel === 'context') renderContextPanel();
     if (conv.title) els.title.textContent = conv.title;
+    const model = conv.model || lastModelOf(state.messages);
+    if (model) {
+      conv.model = model;
+      setModelLabel(model);
+    }
   } catch {
     /* a dropped poll is harmless */
   }
@@ -1162,7 +1199,7 @@ function setBusy(busy) {
 }
 
 function updateSendState() {
-  els.send.disabled = state.busy || !els.input.value.trim();
+  els.send.disabled = state.busy || (!els.input.value.trim() && !state.attachments.length);
 }
 
 // ---------------------------------------------------------------------------
@@ -1264,12 +1301,26 @@ async function sendTurn(text) {
       }
     }
 
-    if (!failed) await refreshConversation();
+    if (!failed) await refreshConversation(true);
   } catch (err) {
-    const note = document.createElement('p');
-    note.className = 'note error';
-    note.textContent = err.message;
-    wrap.append(note);
+    // The turn keeps running on the server even when this pipe dies (phone slept, network
+    // changed). Try to reload whatever committed instead of shouting "network error" at an
+    // answer that is probably already on disk.
+    let recovered = false;
+    try {
+      await refreshConversation(true);
+      recovered = true;
+    } catch {
+      /* the server is unreachable too */
+    }
+    if (recovered) {
+      toast('Connection lost — reloaded from the session transcript.');
+    } else {
+      const note = document.createElement('p');
+      note.className = 'note error';
+      note.textContent = err.message;
+      wrap.append(note);
+    }
   } finally {
     if (live.timer) {
       clearTimeout(live.timer);
@@ -1364,8 +1415,31 @@ function renderSessionCard() {
   });
 }
 
+function panelSwitcherMenu() {
+  floatingMenu(
+    els.toggleSession,
+    (menu) => {
+      menu.append(menuTitle('Panels'));
+      for (const [name, meta] of Object.entries(panelMeta)) {
+        menu.append(
+          menuItem(meta.title, {
+            iconName: meta.icon,
+            active: state.panel === name && !els.panel.hidden,
+            onClick: () => openPanel(name),
+          }),
+        );
+      }
+    },
+    {width: 220},
+  );
+}
+
 function toggleSessionPanel() {
-  if (window.matchMedia('(max-width: 1180px)').matches) {
+  if (window.innerWidth <= 900) {
+    panelSwitcherMenu();
+    return;
+  }
+  if (window.innerWidth <= 1180) {
     openPanel('context');
     return;
   }
@@ -2243,6 +2317,66 @@ function goalToggle() {
   }
 }
 
+// Screenshots and files: uploaded once, then referenced by path. Command Code reads the files
+// with its own tools, so the prompt only has to say where they are.
+function renderAttachments() {
+  const items = state.attachments;
+  els.attachments.hidden = !items.length;
+  els.attachments.innerHTML = items
+    .map(
+      (item, index) => `
+      <div class="attach" title="${esc(item.path)}">
+        ${
+          item.image
+            ? `<img src="${esc(item.url)}" alt="" loading="lazy" />`
+            : `<span class="attach-glyph">${icon('file')}</span>`
+        }
+        <span class="attach-name">${esc(item.name)}</span>
+        <button type="button" class="attach-x" data-remove-attach="${index}" aria-label="Remove attachment">${icon('x')}</button>
+      </div>`,
+    )
+    .join('');
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadFiles(fileList) {
+  const files = [...(fileList || [])];
+  for (const file of files) {
+    if (file.size > 12 * 1024 * 1024) {
+      toast(`${file.name} is over the 12 MB limit.`);
+      continue;
+    }
+    try {
+      const data = await fileToBase64(file);
+      const result = await api('/api/uploads', {
+        method: 'POST',
+        body: JSON.stringify({name: file.name, data}),
+      });
+      state.attachments.push({...result, image: /^image\//.test(file.type || '')});
+      renderAttachments();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+  updateSendState();
+}
+
+els.attachments.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-remove-attach]');
+  if (!button) return;
+  state.attachments.splice(Number(button.dataset.removeAttach), 1);
+  renderAttachments();
+  updateSendState();
+});
+
 function attachFiles() {
   els.fileInput.click();
 }
@@ -2250,6 +2384,113 @@ function attachFiles() {
 function autoGrow() {
   els.input.style.height = 'auto';
   els.input.style.height = `${Math.min(els.input.scrollHeight, window.innerHeight * 0.4)}px`;
+}
+
+// ---------------------------------------------------------------------------
+// Updates
+// ---------------------------------------------------------------------------
+
+let updateSettings = {autoCheckUpdates: true, autoUpdate: false};
+let lastUpdateCheck = 0;
+
+async function loadSettings() {
+  try {
+    updateSettings = {...updateSettings, ...(await api('/api/settings'))};
+  } catch {
+    /* keep the defaults; the update pane still works */
+  }
+}
+
+function paintUpdateDot(status) {
+  const available = Boolean(status && status.updateAvailable);
+  els.updateDot.hidden = !available;
+  els.updates.title = available ? 'Update available' : 'Updates';
+  els.updates.classList.toggle('available', available);
+}
+
+async function checkUpdates({force = false, silent = false} = {}) {
+  try {
+    lastUpdateCheck = Date.now();
+    const status = await api(`/api/update${force ? '?force=1' : ''}`);
+    state.update = status;
+    paintUpdateDot(status);
+    if (status.updateAvailable) {
+      if (!silent) toast(`Update available: ${status.latest.short}`);
+      if (updateSettings.autoUpdate && status.canApply) return applyUpdate({auto: true});
+    }
+    return status;
+  } catch (err) {
+    if (!silent) toast(err.message);
+    return null;
+  }
+}
+
+async function applyUpdate({auto = false} = {}) {
+  try {
+    const result = await api('/api/update/apply', {method: 'POST', body: '{}'});
+    state.update = {...(state.update || {}), ...result, updateAvailable: false};
+    paintUpdateDot(null);
+    if (result.restartRequired) {
+      toast('Update downloaded. Restart the server to run the new server code.');
+    } else {
+      toast(auto ? 'Update downloaded — reloading.' : 'Update downloaded — reloading.');
+      setTimeout(() => location.reload(), 1200);
+    }
+    return result;
+  } catch (err) {
+    toast(err.message);
+    return null;
+  }
+}
+
+function openUpdates() {
+  const status = state.update;
+  const current = (status && status.current) || {};
+  const latest = status && status.latest;
+  const repo = (status && status.repo) || 'shawnradam/TheChambers';
+
+  openModal({
+    title: 'Updates',
+    width: 560,
+    content: `
+      <div class="kv"><span>Repository</span><b>${esc(repo)}</b></div>
+      <div class="kv"><span>Current</span><b>${esc(state.health ? state.health.commit || '—' : '—')}${current.dirty ? ' · uncommitted changes' : ''}</b></div>
+      <div class="kv"><span>Latest on GitHub</span><b>${esc(latest ? latest.short : '—')}</b></div>
+      <div class="kv"><span>Status</span><b>${status && status.updateAvailable ? 'Update available' : status && status.error ? esc(status.error) : 'Up to date'}</b></div>
+      ${latest && latest.url ? `<p class="meta"><a href="${esc(latest.url)}" target="_blank" rel="noreferrer noopener">See what changed on GitHub</a></p>` : ''}
+      <label class="check"><input type="checkbox" id="auto-check" ${updateSettings.autoCheckUpdates ? 'checked' : ''} /> Check for updates on start</label>
+      <label class="check"><input type="checkbox" id="auto-update" ${updateSettings.autoUpdate ? 'checked' : ''} /> Download new updates automatically</label>
+      <div class="actions">
+        <button class="btn" data-check type="button">Check now</button>
+        <button class="btn primary" data-apply type="button" ${status && status.canApply ? '' : 'disabled'}>
+          ${status && status.updateAvailable ? 'Download update' : 'Nothing to download'}
+        </button>
+      </div>`,
+    onOpen: ({body, close}) => {
+      const save = (changes) =>
+        api('/api/settings', {method: 'POST', body: JSON.stringify(changes)})
+          .then((next) => {
+            updateSettings = {...updateSettings, ...next};
+          })
+          .catch((err) => toast(err.message));
+
+      body.querySelector('#auto-check').addEventListener('change', (event) => {
+        save({autoCheckUpdates: event.target.checked});
+      });
+      body.querySelector('#auto-update').addEventListener('change', (event) => {
+        save({autoUpdate: event.target.checked});
+      });
+      body.querySelector('[data-check]').addEventListener('click', async () => {
+        const next = await checkUpdates({force: true});
+        close();
+        if (next) openUpdates();
+      });
+      body.querySelector('[data-apply]').addEventListener('click', async () => {
+        const result = await applyUpdate();
+        if (result) close();
+      });
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2261,14 +2502,15 @@ function openSettings() {
     title: 'Settings',
     width: 720,
     content: `
-      <div style="display:flex;gap:18px;min-height:340px">
-        <div style="width:180px;flex:none;display:flex;flex-direction:column;gap:2px">
-          <label class="field" style="margin-bottom:8px">${icon('search')}<input placeholder="Search settings" /></label>
+      <div class="settings-layout">
+        <div class="settings-nav">
+          <label class="field settings-search">${icon('search')}<input placeholder="Search settings" /></label>
           <button class="menu-item active" data-pane="general" type="button">${icon('gear')}General</button>
+          <button class="menu-item" data-pane="updates" type="button">${icon('refresh')}Updates</button>
           <button class="menu-item" data-pane="projects" type="button">${icon('folder')}Projects</button>
           <button class="menu-item" data-pane="about" type="button">${icon('book')}About</button>
         </div>
-        <div id="settings-pane" style="flex:1;min-width:0"></div>
+        <div id="settings-pane" class="settings-pane"></div>
       </div>`,
     onOpen: ({body, close}) => {
       const pane = body.querySelector('#settings-pane');
@@ -2286,6 +2528,50 @@ function openSettings() {
           pane.querySelector('[data-add-project]').addEventListener('click', () => {
             close();
             promptForProject();
+          });
+        } else if (name === 'updates') {
+          const status = state.update;
+          const current = (status && status.current) || {};
+          const latest = status && status.latest;
+          pane.innerHTML = `
+            <h3>Updates</h3>
+            <p>TheChambers pulls new commits from GitHub. Local changes are never overwritten: if the
+            tree is dirty, the update stops and tells you.</p>
+            <div class="kv"><span>Repository</span><b>${esc((status && status.repo) || 'shawnradam/TheChambers')}</b></div>
+            <div class="kv"><span>Current</span><b>${esc((state.health && state.health.commit) || current.short || '—')}${current.dirty ? ' · uncommitted changes' : ''}</b></div>
+            <div class="kv"><span>Latest on GitHub</span><b>${esc(latest ? latest.short : '—')}</b></div>
+            <div class="kv"><span>Status</span><b>${status && status.updateAvailable ? 'Update available' : status && status.error ? esc(status.error) : 'Up to date'}</b></div>
+            ${latest && latest.url ? `<p class="meta"><a href="${esc(latest.url)}" target="_blank" rel="noreferrer noopener">See what changed on GitHub</a></p>` : ''}
+            <label class="check"><input type="checkbox" data-auto-check ${updateSettings.autoCheckUpdates ? 'checked' : ''} /> Check for updates on start</label>
+            <label class="check"><input type="checkbox" data-auto-update ${updateSettings.autoUpdate ? 'checked' : ''} /> Download new updates automatically</label>
+            <div class="actions">
+              <button class="btn" data-update-check type="button">Check now</button>
+              <button class="btn primary" data-update-apply type="button" ${status && status.canApply ? '' : 'disabled'}>
+                ${status && status.updateAvailable ? 'Download update' : 'Nothing to download'}
+              </button>
+            </div>`;
+
+          const save = (changes) =>
+            api('/api/settings', {method: 'POST', body: JSON.stringify(changes)})
+              .then((next) => {
+                updateSettings = {...updateSettings, ...next};
+              })
+              .catch((err) => toast(err.message));
+
+          pane.querySelector('[data-auto-check]').addEventListener('change', (event) => {
+            save({autoCheckUpdates: event.target.checked});
+          });
+          pane.querySelector('[data-auto-update]').addEventListener('change', (event) => {
+            save({autoUpdate: event.target.checked});
+          });
+          pane.querySelector('[data-update-check]').addEventListener('click', async () => {
+            toast('Checking GitHub…');
+            const next = await checkUpdates({force: true});
+            if (next) paint('updates');
+          });
+          pane.querySelector('[data-update-apply]').addEventListener('click', async () => {
+            const result = await applyUpdate();
+            if (result) paint('updates');
           });
         } else if (name === 'about') {
           pane.innerHTML = `
@@ -2356,8 +2642,12 @@ function openMore() {
         }),
         menuItem('Keyboard shortcuts', {iconName: 'sliders', onClick: openShortcuts}),
         menuItem('Settings', {iconName: 'gear', onClick: openSettings}),
+        menuItem('Check for updates', {iconName: 'refresh', onClick: openUpdates}),
         menuSep(),
-        menuItem(`Version ${state.health ? state.health.version : ''}`, {iconName: 'book'}),
+        menuItem(`Version ${state.health ? state.health.version : '—'} by TheChambers`, {
+          iconName: 'book',
+          onClick: () => window.open('https://github.com/shawnradam/TheChambers', '_blank', 'noopener'),
+        }),
         menuItem('Sign out', {iconName: 'lock', onClick: signOut}),
       );
     },
@@ -2385,9 +2675,20 @@ function closeNav() {
 
 els.composer.addEventListener('submit', (event) => {
   event.preventDefault();
-  let text = els.input.value.trim();
-  if (!text || state.busy) return;
+  const typed = els.input.value.trim();
+  const files = state.attachments.slice();
+  if ((!typed && !files.length) || state.busy) return;
+
+  let text = typed || 'Take a look at the attached file.';
   if (state.goal && !/^goal:/i.test(text)) text = `Goal: ${text}`;
+  if (files.length) {
+    text += `\n\nAttached files (open them from disk if you need to look):\n${files
+      .map((file) => `- ${file.path}`)
+      .join('\n')}`;
+  }
+
+  state.attachments = [];
+  renderAttachments();
   els.input.value = '';
   autoGrow();
   updateSendState();
@@ -2443,14 +2744,34 @@ els.goal.addEventListener('click', goalToggle);
 els.attach.addEventListener('click', attachFiles);
 
 els.fileInput.addEventListener('change', () => {
-  const names = [...els.fileInput.files].map((file) => `@${file.name}`).join(' ');
-  if (names) {
-    els.input.value = `${els.input.value}${els.input.value ? ' ' : ''}${names}`.trim();
-    autoGrow();
-    updateSendState();
-  }
+  if (els.fileInput.files && els.fileInput.files.length) uploadFiles(els.fileInput.files);
   els.fileInput.value = '';
 });
+
+// Paste a screenshot straight into the composer (Ctrl/Cmd+V, or long-press → Paste).
+els.input.addEventListener('paste', (event) => {
+  const files = [...((event.clipboardData && event.clipboardData.files) || [])];
+  if (!files.length) return;
+  event.preventDefault();
+  uploadFiles(files);
+});
+
+// Drag and drop, for the desktop browser.
+['dragover', 'drop'].forEach((type) => {
+  els.composer.addEventListener(type, (event) => {
+    if (type === 'dragover') {
+      event.preventDefault();
+      els.composer.classList.add('dropping');
+      return;
+    }
+    event.preventDefault();
+    els.composer.classList.remove('dropping');
+    const files = [...((event.dataTransfer && event.dataTransfer.files) || [])];
+    if (files.length) uploadFiles(files);
+  });
+});
+
+els.composer.addEventListener('dragleave', () => els.composer.classList.remove('dropping'));
 
 els.ctxRing.addEventListener('click', () => openPanel('context'));
 els.toggleSession.addEventListener('click', toggleSessionPanel);
@@ -2485,6 +2806,7 @@ els.addProject.addEventListener('click', promptForProject);
 els.addProjectGroup.addEventListener('click', promptForProject);
 els.shortcuts.addEventListener('click', openShortcuts);
 els.settings.addEventListener('click', openSettings);
+els.updates.addEventListener('click', openUpdates);
 els.more.addEventListener('click', openMore);
 
 els.exportBtn.addEventListener('click', () => {
@@ -2588,6 +2910,24 @@ async function boot() {
   renderSidebar();
   updateContextRing();
 
+  // Updates: read the preference, then keep an eye on GitHub. The badge appears on its own —
+  // no reload needed — every five minutes, and whenever the tab comes back into view.
+  await loadSettings();
+  if (updateSettings.autoCheckUpdates) {
+    checkUpdates({silent: true});
+    setInterval(() => {
+      if (!document.hidden) checkUpdates({silent: true});
+    }, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && Date.now() - lastUpdateCheck > 60000) checkUpdates({silent: true});
+    });
+  }
+
+  if (window.innerWidth > 1180) {
+    renderSessionCard();
+    els.sessionPanel.hidden = false;
+  }
+
   // Keep the model list warm so the menu opens instantly.
   api('/api/models')
     .then((data) => {
@@ -2596,6 +2936,14 @@ async function boot() {
       renderSessionCard();
     })
     .catch(() => {});
+
+  // Sessions written by a terminal change the live dots and counts; refresh the sidebar
+  // without disturbing the open conversation.
+  setInterval(() => {
+    if (document.hidden) return;
+    loadState().catch(() => {});
+    if (state.expanded.has(state.workspace)) loadSessions(state.workspace).catch(() => {});
+  }, 10000);
 
   els.input.focus();
 }

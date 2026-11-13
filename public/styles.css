@@ -597,7 +597,7 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 24px 6vh;
+  padding: 24px 0 6vh;
 }
 
 .empty-inner {
@@ -670,7 +670,7 @@ a:hover {
 #input {
   display: block;
   width: 100%;
-  min-height: 52px;
+  min-height: 60px;
   max-height: 38vh;
   padding: 16px 12px 8px;
   border: 0;
@@ -742,6 +742,10 @@ a:hover {
   max-width: 190px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+#model-btn {
+  min-width: 0;
 }
 
 .agent-dot {
@@ -1953,7 +1957,7 @@ a:hover {
   left: 0;
 }
 
-.menu .menu-item {
+.menu-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1966,28 +1970,28 @@ a:hover {
   text-align: left;
 }
 
-.menu .menu-item .icon {
+.menu-item .icon {
   width: 14px;
   height: 14px;
   color: var(--muted);
 }
 
-.menu .menu-item .spacer {
+.menu-item .spacer {
   flex: 1;
 }
 
-.menu .menu-item .hint {
+.menu-item .hint {
   color: var(--muted);
   font-size: 11.5px;
 }
 
-.menu .menu-item:hover,
-.menu .menu-item.active {
+.menu-item:hover,
+.menu-item.active {
   background: var(--hover);
   color: var(--fg);
 }
 
-.menu .menu-item.active .icon {
+.menu-item.active .icon {
   color: var(--primary);
 }
 
@@ -2121,6 +2125,11 @@ a:hover {
   font-size: 12px;
 }
 
+.modal-body .field {
+  flex: none;
+  width: 100%;
+}
+
 .modal-body input.text {
   width: 100%;
   height: 36px;
@@ -2148,6 +2157,172 @@ a:hover {
   border-bottom: 1px solid var(--line);
   font-size: 12.5px;
   color: var(--muted);
+}
+
+.modal-body .check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 9px 0;
+  font-size: 13px;
+  color: var(--soft, var(--muted));
+  cursor: pointer;
+}
+
+.modal-body .check input {
+  accent-color: var(--primary, #da702c);
+}
+
+/* Settings: two columns on a desk, one scroller with tab chips on a phone. */
+
+.settings-layout {
+  display: flex;
+  gap: 18px;
+  min-height: 340px;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 180px;
+  flex: none;
+}
+
+.settings-search {
+  margin-bottom: 8px;
+}
+
+.settings-pane {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .settings-layout {
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    width: auto;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .settings-nav .settings-search {
+    display: none;
+  }
+
+  .settings-nav .menu-item {
+    flex: none;
+    white-space: nowrap;
+    padding: 6px 10px;
+  }
+
+  .settings-pane {
+    max-height: min(62dvh, 560px);
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
+  .modal-body .kv {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .modal-body .kv b {
+    text-align: left;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Attachments in the composer */
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+
+.attach {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 230px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  font-size: 12px;
+}
+
+.attach img {
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.attach-glyph {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--muted);
+}
+
+.attach-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.attach-x {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.attach-x .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.composer.dropping .composer-card {
+  border-color: var(--primary, #da702c);
+  box-shadow: 0 0 0 2px rgba(218, 124, 71, 0.18);
+}
+
+.icon-btn.has-badge {
+  position: relative;
+}
+
+.badge-dot {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary, #da702c);
+  box-shadow: 0 0 0 2px var(--sidebar, var(--bg));
+}
+
+#updates.available {
+  color: var(--primary-text, #e59a69);
 }
 
 .modal-body .kv b {
@@ -2449,10 +2624,108 @@ a:hover {
   .chip .icon {
     display: none;
   }
+  .chip.square .icon {
+    display: block;
+  }
   .composer-bar {
     padding: 0 8px 6px;
   }
-  #attach {
+  .bar-btn {
+    padding: 0 3px;
+    gap: 4px;
+  }
+  #model-btn {
+    max-width: 104px;
+  }
+  #model-btn > .icon:first-child,
+  #model-btn .caret,
+  #agent-btn .caret {
     display: none;
+  }
+  #model-label {
+    max-width: 96px;
+  }
+}
+
+/* Phones: the composer is the main control, so give it room and thumb-sized targets. */
+@media (max-width: 900px) {
+  .modal-backdrop {
+    padding: 10px;
+    align-items: flex-end;
+  }
+
+  .modal {
+    max-height: 92dvh;
+  }
+
+  .empty {
+    padding: 10px 12px 3vh;
+  }
+
+  .empty-inner {
+    padding: 0 4px;
+  }
+
+  .composer {
+    max-width: none;
+  }
+
+  .composer-dock {
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .composer-card {
+    border-radius: 14px;
+  }
+
+  #input {
+    font-size: 16px;
+    line-height: 22px;
+    min-height: 76px;
+    padding: 14px 14px 10px;
+  }
+
+  .composer-bar {
+    height: 46px;
+    padding: 0 10px 8px;
+    gap: 4px;
+  }
+
+  .composer-bar .icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .composer-bar .icon-btn .icon {
+    width: 17px;
+    height: 17px;
+  }
+
+  .send {
+    width: 34px;
+    height: 34px;
+  }
+
+  .bar-btn {
+    height: 30px;
+    font-size: 12.5px;
+  }
+
+  /* 16px keeps iOS from zooming into a focused field. */
+  #search,
+  .modal-body input,
+  .menu input,
+  .login-input input {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-nav {
+    flex-wrap: wrap;
+  }
+
+  .settings-pane {
+    max-height: 58dvh;
   }
 }

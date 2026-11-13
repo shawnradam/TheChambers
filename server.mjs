@@ -13,7 +13,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {spawn, execFile, execFileSync} from 'node:child_process';
+import {spawn, execFile, execFileSync, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -23,17 +23,46 @@ const PASSWORD_FILE = path.join(CONFIG_DIR, 'ui-password.txt');
 const SECRET_FILE = path.join(CONFIG_DIR, 'secret.txt');
 const CONVERSATIONS_FILE = path.join(CONFIG_DIR, 'conversations.json');
 const NOTES_FILE = path.join(CONFIG_DIR, 'notes.json');
+const UPLOAD_DIR = path.join(CONFIG_DIR, 'uploads');
+const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
 
 const env = (name, legacy, fallback) => process.env[name] || (legacy ? process.env[legacy] : undefined) || fallback;
 
 const PORT = Number(env('THECHAMBERS_PORT', 'CMDC_WEB_PORT', 3002));
 const WORKSPACE = path.resolve(env('THECHAMBERS_WORKSPACE', 'CMDC_WEB_WORKSPACE', os.homedir()));
 const MAX_TURNS = String(env('THECHAMBERS_MAX_TURNS', 'CMDC_WEB_MAX_TURNS', 60));
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
+// Where updates come from. A fork can point this somewhere else without editing code.
+const REPO = env('THECHAMBERS_REPO', null, 'shawnradam/TheChambers');
 // A session touched this recently is almost certainly still open in a terminal.
 const LIVE_WINDOW_MS = 120000;
 
 fs.mkdirSync(CONFIG_DIR, {recursive: true});
+fs.mkdirSync(UPLOAD_DIR, {recursive: true});
+
+// A log the launcher window cannot show: the server often runs hidden, and a crash there used to
+// leave the phone with a bare "network error" and nothing to read.
+const LOG_FILE = path.join(CONFIG_DIR, 'server.log');
+
+function logLine(message) {
+  const line = `${new Date().toISOString()} ${message}\n`;
+  try {
+    const size = fs.existsSync(LOG_FILE) ? fs.statSync(LOG_FILE).size : 0;
+    if (size > 1024 * 1024) fs.writeFileSync(LOG_FILE, line);
+    else fs.appendFileSync(LOG_FILE, line);
+  } catch {
+    /* logging must never break a request */
+  }
+}
+
+process.on('uncaughtException', (err) => {
+  logLine(`uncaught: ${err && err.stack ? err.stack : err}`);
+  console.error('[thechambers] uncaught exception', err);
+});
+
+process.on('unhandledRejection', (err) => {
+  logLine(`unhandled rejection: ${err && err.stack ? err.stack : err}`);
+});
 
 // ---------------------------------------------------------------------------
 // Local secrets
@@ -92,6 +121,237 @@ function persist() {
 }
 
 const running = new Map(); // conversationId -> {child, assistant, wasStopped}
+
+// ---------------------------------------------------------------------------
+// Settings and updates
+//
+// Updates come from the public GitHub repository. `git ls-remote` reads the remote head without
+// fetching or authenticating, so a phone on the tailnet can ask "is there a newer commit" without
+// holding any credentials. Applying is a fast-forward pull, and it refuses to run over a dirty
+// tree: local work is never discarded to make room for an update.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_SETTINGS = {
+  autoCheckUpdates: true,
+  autoUpdate: false,
+  lastCheckAt: 0,
+  lastKnownRemote: null,
+};
+
+let settings = {...DEFAULT_SETTINGS};
+try {
+  if (fs.existsSync(SETTINGS_FILE)) {
+    const parsed = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+    if (parsed && typeof parsed === 'object') settings = {...DEFAULT_SETTINGS, ...parsed};
+  }
+} catch (err) {
+  console.error(`[thechambers] Ignoring unreadable ${SETTINGS_FILE}: ${err.message}`);
+}
+
+function persistSettings() {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  } catch (err) {
+    console.error(`[thechambers] Could not save settings: ${err.message}`);
+  }
+}
+
+function git(args, options = {}) {
+  const result = spawnSync('git', args, {
+    cwd: HERE,
+    encoding: 'utf8',
+    timeout: options.timeout || 30000,
+    windowsHide: true,
+    env: {...process.env, GIT_TERMINAL_PROMPT: '0'},
+  });
+  return {
+    ok: result.status === 0,
+    out: (result.stdout || '').trim(),
+    err: (result.stderr || '').trim(),
+    status: result.status,
+  };
+}
+
+function repoState() {
+  if (!fs.existsSync(path.join(HERE, '.git'))) {
+    return {isGit: false, commit: null, short: null, branch: null, dirty: false, remote: REPO};
+  }
+  const commit = git(['rev-parse', 'HEAD']);
+  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+  const status = git(['status', '--porcelain']);
+  return {
+    isGit: commit.ok,
+    commit: commit.ok ? commit.out : null,
+    short: commit.ok ? commit.out.slice(0, 7) : null,
+    branch: branch.ok ? branch.out : null,
+    dirty: status.ok ? status.out.length > 0 : false,
+    remote: REPO,
+  };
+}
+
+// Anonymous read of the remote head. No fetch, no credentials, no API rate limit.
+function remoteHead(branch) {
+  const result = git(['ls-remote', `https://github.com/${REPO}.git`, `refs/heads/${branch}`], {
+    timeout: 20000,
+  });
+  if (!result.ok) return {ok: false, error: result.err || 'Could not reach GitHub.'};
+  const sha = result.out.split(/\s+/)[0];
+  return sha ? {ok: true, commit: sha} : {ok: false, error: 'GitHub returned no commit for that branch.'};
+}
+
+let updateCache = {at: 0, value: null};
+
+function updateStatus({force = false} = {}) {
+  if (!force && updateCache.value && Date.now() - updateCache.at < 60000) return updateCache.value;
+
+  const local = repoState();
+  if (!local.isGit) {
+    const value = {
+      ok: true,
+      isGit: false,
+      repo: REPO,
+      current: {version: VERSION, commit: null, short: null, branch: null, dirty: false},
+      latest: null,
+      updateAvailable: false,
+      note: 'This folder is not a git checkout, so updates cannot be pulled. Clone the repository to enable them.',
+    };
+    updateCache = {at: Date.now(), value};
+    return value;
+  }
+
+  const branch = local.branch || 'main';
+  const remote = remoteHead(branch);
+  const latest = remote.ok
+    ? {
+        commit: remote.commit,
+        short: remote.commit.slice(0, 7),
+        // GitHub's compare page is a click away from the diff.
+        url: `https://github.com/${REPO}/compare/${local.commit || 'HEAD'}...${remote.commit}`,
+      }
+    : null;
+
+  // A local commit ahead of origin is not an update. Only offer one when the remote head is
+  // not already an ancestor of HEAD.
+  const remoteKnown = Boolean(latest && local.commit);
+  const remoteIsAncestor = remoteKnown
+    ? git(['merge-base', '--is-ancestor', latest.commit, 'HEAD']).status === 0
+    : false;
+  const updateAvailable = Boolean(remoteKnown && latest.commit !== local.commit && !remoteIsAncestor);
+  settings.lastCheckAt = Date.now();
+  if (latest) settings.lastKnownRemote = latest.commit;
+  persistSettings();
+
+  const value = {
+    ok: true,
+    isGit: true,
+    repo: REPO,
+    branch,
+    current: {
+      version: VERSION,
+      commit: local.commit,
+      short: local.short,
+      dirty: local.dirty,
+    },
+    latest,
+    updateAvailable,
+    error: remote.ok ? null : remote.error,
+    canApply: Boolean(updateAvailable) && !local.dirty,
+  };
+  updateCache = {at: Date.now(), value};
+  return value;
+}
+
+function applyUpdate() {
+  const local = repoState();
+  if (!local.isGit) return {ok: false, error: 'This folder is not a git checkout.'};
+  if (local.dirty) {
+    return {
+      ok: false,
+      error: 'Local changes are uncommitted. Commit or stash them first — the update will not overwrite your work.',
+      dirty: true,
+    };
+  }
+
+  const branch = local.branch || 'main';
+  const fetch = git(['fetch', '--quiet', 'origin', branch], {timeout: 60000});
+  if (!fetch.ok) return {ok: false, error: fetch.err || 'git fetch failed.'};
+
+  const pull = git(['merge', '--ff-only', `origin/${branch}`], {timeout: 60000});
+  if (!pull.ok) return {ok: false, error: pull.err || pull.out || 'Fast-forward failed.'};
+
+  const after = repoState();
+  updateCache = {at: 0, value: null};
+  // Server code changed? The files on disk are new, but this process is still running the old ones.
+  const restartRequired = git(['diff', '--name-only', 'HEAD@{1}', 'HEAD']).out
+    .split('\n')
+    .some((file) => file === 'server.mjs' || file.startsWith('tools/'));
+
+  return {
+    ok: true,
+    from: local.commit,
+    to: after.commit,
+    dirty: after.dirty,
+    restartRequired,
+    updatedAt: Date.now(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Uploads
+//
+// Screenshots and files pasted on the phone are written to disk and handed to the agent by
+// path — Command Code reads files with its own tools, so nothing needs to be inlined into the
+// prompt. Previews are served back from here, authenticated like every other API call.
+// ---------------------------------------------------------------------------
+
+const UPLOAD_LIMIT = 12 * 1024 * 1024;
+const UPLOAD_TYPES = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/plain; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.log': 'text/plain; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+};
+
+function safeUploadName(name) {
+  const base = path.basename(String(name || 'file'))
+    .replace(/[^\w.\- ]+/g, '_')
+    .slice(-80);
+  return base || 'file';
+}
+
+// Keep the newest 200 uploads; they are scratch, not an archive.
+function pruneUploads() {
+  try {
+    const entries = fs
+      .readdirSync(UPLOAD_DIR)
+      .map((name) => {
+        const full = path.join(UPLOAD_DIR, name);
+        try {
+          return {full, mtime: fs.statSync(full).mtimeMs};
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.mtime - a.mtime);
+    for (const entry of entries.slice(200)) {
+      try {
+        fs.unlinkSync(entry.full);
+      } catch {
+        /* nothing to do */
+      }
+    }
+  } catch {
+    /* an unreadable upload dir is not worth failing a request over */
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -863,8 +1123,11 @@ async function startTurn(req, res) {
 
   child.on('close', (code, signal) => finish(code, signal));
 
-  req.on('close', () => {
-    // The phone dropped the stream. The run continues; the window just stops receiving frames.
+  // Watch the *response*, not the request. An IncomingMessage emits 'close' as soon as its body
+  // has been consumed, which is immediately for our small JSON POST — clearing the heartbeat
+  // there left a long turn with no bytes on the wire, and phone networks drop those silently.
+  // The run itself keeps going either way; only the pipe to this browser is affected.
+  res.on('close', () => {
     clearInterval(heartbeat);
   });
 }
@@ -916,7 +1179,14 @@ const handler = async (req, res) => {
 
   try {
     if (req.method === 'GET' && pathname === '/health') {
-      return json(res, 200, {ok: true, version: VERSION, workspace: WORKSPACE, running: running.size});
+      const repo = repoState();
+      return json(res, 200, {
+        ok: true,
+        version: VERSION,
+        commit: repo.short,
+        workspace: WORKSPACE,
+        running: running.size,
+      });
     }
 
     if (req.method === 'GET' && (pathname === '/login' || pathname === '/login.html')) {
@@ -986,6 +1256,90 @@ const handler = async (req, res) => {
         running: [...running.keys()],
         conversations: state.conversations.map(publicConversation),
       });
+    }
+
+    if (req.method === 'GET' && pathname === '/api/update') {
+      const force = url.searchParams.get('force') === '1';
+      return json(res, 200, updateStatus({force}));
+    }
+
+    if (req.method === 'POST' && pathname === '/api/update/apply') {
+      const result = applyUpdate();
+      if (!result.ok) return json(res, result.dirty ? 409 : 500, result);
+      // A pull changed files on disk. The running process keeps the old server code in memory,
+      // but the browser only needs a reload for the static files.
+      return json(res, 200, {...result, current: repoState()});
+    }
+
+    if (req.method === 'GET' && pathname === '/api/settings') {
+      const repo = repoState();
+      return json(res, 200, {
+        ...settings,
+        version: VERSION,
+        commit: repo.short,
+        repo: REPO,
+        // Prove the update path is usable before offering the button.
+        updatesSupported: repo.isGit,
+      });
+    }
+
+    if (req.method === 'POST' && pathname === '/api/settings') {
+      const body = await readJson(req).catch(() => ({}));
+      for (const key of ['autoCheckUpdates', 'autoUpdate']) {
+        if (typeof body[key] === 'boolean') settings[key] = body[key];
+      }
+      persistSettings();
+      return json(res, 200, settings);
+    }
+
+    // A pasted screenshot arrives as base64 JSON: no multipart parser, no dependencies.
+    if (req.method === 'POST' && pathname === '/api/uploads') {
+      const body = await readJson(req, UPLOAD_LIMIT + 1024 * 1024).catch(() => null);
+      if (!body || typeof body.data !== 'string') {
+        return json(res, 400, {error: 'Expected {name, data} with base64 data.'});
+      }
+      const encoded = body.data.replace(/^data:[^;]+;base64,/, '');
+      let buffer;
+      try {
+        buffer = Buffer.from(encoded, 'base64');
+      } catch {
+        return json(res, 400, {error: 'That attachment is not valid base64.'});
+      }
+      if (!buffer.length) return json(res, 400, {error: 'The attachment is empty.'});
+      if (buffer.length > UPLOAD_LIMIT) {
+        return json(res, 413, {error: 'Attachments are limited to 12 MB.'});
+      }
+
+      const name = safeUploadName(body.name);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const file = `${stamp}-${name}`;
+      const full = path.join(UPLOAD_DIR, file);
+      fs.writeFileSync(full, buffer);
+      pruneUploads();
+
+      return json(res, 201, {
+        ok: true,
+        name,
+        size: buffer.length,
+        path: full,
+        url: `/api/uploads/${encodeURIComponent(file)}`,
+      });
+    }
+
+    if (req.method === 'GET' && pathname.startsWith('/api/uploads/')) {
+      const name = path.basename(decodeURIComponent(pathname.slice('/api/uploads/'.length)));
+      const full = path.join(UPLOAD_DIR, name);
+      if (!fs.existsSync(full)) return json(res, 404, {error: 'No such upload.'});
+      const type = UPLOAD_TYPES[path.extname(name).toLowerCase()] || 'application/octet-stream';
+      const data = fs.readFileSync(full);
+      res.writeHead(200, {
+        'Content-Type': type,
+        'Content-Length': data.length,
+        'Cache-Control': 'private, max-age=86400',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'",
+      });
+      return res.end(data);
     }
 
     // Projects are the working directories Command Code already has sessions for, plus any
@@ -1390,6 +1744,7 @@ const handler = async (req, res) => {
     res.end(JSON.stringify({error: 'Not found.'}));
   } catch (err) {
     console.error('[thechambers] request failed', err);
+    logLine(`request failed: ${err && err.stack ? err.stack : err}`);
     if (!res.headersSent) {
       json(res, 500, {error: err.message});
     } else if (!res.writableEnded) {
@@ -1418,6 +1773,12 @@ const servers = [];
 // reachable from the local network.
 const addListener = (host) => {
   const instance = http.createServer(handler);
+  // A turn can run for many minutes. None of Node's defaults should be allowed to cut the pipe:
+  // no request-receipt timeout, a generous header timeout, and no socket idle timeout.
+  instance.requestTimeout = 0;
+  instance.headersTimeout = 120000;
+  instance.timeout = 0;
+  instance.keepAliveTimeout = 65000;
   instance.listen(PORT, host, () => {
     console.log(`[thechambers] listening on http://${host}:${PORT}`);
   });

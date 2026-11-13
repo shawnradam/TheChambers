@@ -32,9 +32,13 @@ opening a port to the internet:
 | **Projects** | Every folder Command Code already has sessions for, plus any folder you add by path |
 | **Terminal bridge** | A message sent here continues the same session id, so a terminal and the phone share one conversation |
 | **Live indicator** | Marks sessions being written right now (`● live now`) and warns when two writers share a session |
-| **Permission modes** | Read-only by default; Full access (`--yolo`) when you need edits and shell commands |
+| **Workspace panels** | Git status and diffs, a file tree and viewer, a terminal, a commit walkthrough, project notes, and a browser preview |
+| **Model picker** | Reads `cmdc --list-models`, groups by provider, and passes the chosen model to the turn |
+| **Context card** | Token usage, cache hit rate, cost, turns, and an estimated context window for the active session |
+| **Permission modes** | Read-only by default, Accept edits, Plan, and Full access (`--yolo`) |
+| **Updates** | Checks the GitHub repo, refuses to pull over uncommitted work, and fast-forwards when the tree is clean |
 | **Password gate** | One password, per-device trusted cookies, rate-limited attempts, strict CSP |
-| **Zero dependencies** | Plain Node 22+ and four static files. Nothing to `npm install` |
+| **Zero dependencies** | Plain Node 22+ and static files. Nothing to `npm install` |
 
 ## Requirements
 
@@ -113,38 +117,62 @@ To rotate it, replace the file's contents and restart the server. All devices wi
 
 ## Using it
 
-The interface follows prior art's layout: a 280px sidebar, a centered hero on an empty session,
-and one composer that follows you into the conversation.
+The interface follows prior art's layout: a 280px sidebar, a 48px topbar, a centered hero on an
+empty session, one composer that follows you into the conversation, and a 44px rail of workspace
+panels on the right. On a phone the sidebar becomes a drawer and the rail moves into a panel menu.
 
 ### Sidebar
 
-- **Chats** — conversations this app tracks, most recent first. The sidebar shows the active one
-  and a green dot while a turn is running.
-- **In work** — appears only while something is running, so you can jump back to it.
-- **Projects** — every working directory Command Code has sessions for, with a session count.
-  Click one to expand it: each nested row is a real session file, newest first, and anything
-  written in the last two minutes is marked with a green dot. Tap a session to resume it with its
-  full transcript. **+** adds a folder by full path.
+- **Chats** — conversations this app tracks, most recent first. Hovering a row reveals Archive and
+  a menu with Rename, Export, and Delete. A green dot means a turn is running.
+- **In work** — appears only while something is running.
+- **Projects** — every working directory Command Code has sessions for. Click to expand: each
+  nested row is a real session file, newest first; tap to resume it. **+** adds a folder by path.
+- **Footer** — Settings, Updates (with a dot when GitHub has a newer commit), and export.
 
-The magnifier filters chats and sessions by text; the panel icon collapses the sidebar.
+The magnifier filters chats, projects, and sessions; the panel icon collapses the sidebar.
+
+### Topbar and session panel
+
+The title follows the active session. The ring on the right shows the estimated share of the
+context window used; the sliders button opens the **Session** card with context, cache-hit rate,
+usage, message count, and turns. On phones the same button opens the panel menu.
+
+### Workspace panels
+
+The rail on the right opens one panel at a time:
+
+| Panel | Contents |
+| --- | --- |
+| **Context** | Context use, message and turn counts, cost, token totals, last-turn metrics, a source-share bar, and the raw message list |
+| **Git** | Branch, changed files, and an Initialize Git button for folders that are not repositories |
+| **Changes** | The changed-file list with a colored unified diff for the selected file |
+| **Walkthrough** | The last 30 commits (`hash`, date, subject) |
+| **Files** | The project tree (dotfiles hidden), search, and a read-only file viewer |
+| **Terminal** | Runs PowerShell (or `/bin/sh`) commands in the project folder, 120-second timeout, output capped |
+| **Browser** | Preview a local dev server in an iframe |
+| **Project knowledge** | Notes, Todo, and Plans per workspace, stored server-side |
+
+Terminal and Full access are real: anything they can do, they do on this machine. There is no
+extra confirmation in the web UI.
 
 ### Composer
 
 - Placeholder: *Plan, build, or ask.* Enter sends on a physical keyboard; on touch devices the
   arrow button does.
-- **Read-only / Full access** chip on the left of the composer bar.
-- The model in use appears next to it once the first frame arrives.
-- In an empty session, the six suggestion chips under the composer seed a prompt
-  (explore the codebase, catch me up, weigh my options, plan a feature, debug an issue, review
-  changes).
+- **+** attaches file names as `@mentions`, the shield picks the permission level, the target
+  starts a goal, the model chip lists `cmdc --list-models` by provider, and **Build / Plan**
+  switches the agent.
+- In an empty session, the suggestion chips seed a prompt.
 - **Stop** kills the whole process tree. Everything that had already committed stays on disk.
 
 ### Permission modes
 
 - **Read-only** (default) — reads, searches, explains. Headless Command Code denies file writes
   and shell commands, so nothing on the machine changes.
-- **Full access** — passes `--yolo`: edits files and runs commands with no approval prompt. There
-  is no confirmation step in the web UI, so treat this as "yes, do it".
+- **Accept edits** — passes `--accept-edits`: file edits apply without a prompt.
+- **Plan** — passes `--plan`: read-only planning.
+- **Full access** — passes `--yolo`: edits files and runs commands with no approval prompt.
 
 ## One session, two views
 
@@ -188,8 +216,10 @@ State lives in `%USERPROFILE%\.config\thechambers\` (or `~/.config/thechambers/`
 | `ui-password.txt` | The unlock password |
 | `secret.txt` | HMAC key for session cookies |
 | `conversations.json` | Chat metadata only — titles, project, session id. Messages are never duplicated here |
+| `notes.json` | Project knowledge: notes, todos, and plans per workspace |
+| `settings.json` | Update preferences and the last known remote commit |
 
-Back up the first two if you want to keep passwords and logins; the third is disposable.
+Back up the first two if you want to keep passwords and logins; the rest is disposable.
 
 ## API
 
@@ -207,9 +237,24 @@ All endpoints except `/health` and `/login` require the session cookie.
 | `POST` | `/api/sessions/resume` | `{sessionId}` → conversation bound to that session |
 | `GET` | `/api/conversations/:id` | Conversation plus messages read from the transcript |
 | `POST` | `/api/conversations` | `{workspace, title}` → new chat |
+| `PATCH` | `/api/conversations/:id` | `{title}` → rename |
 | `DELETE` | `/api/conversations/:id` | Forget a chat (the session file is left alone) |
-| `POST` | `/api/turn` | `{conversationId?, workspace?, text, mode}` → SSE stream |
+| `POST` | `/api/turn` | `{conversationId?, workspace?, text, mode, model?}` → SSE stream |
 | `POST` | `/api/stop` | `{conversationId}` → kill the running turn |
+| `GET` | `/api/files?workspace=&path=` | One directory in the project tree |
+| `GET` | `/api/file?workspace=&path=` | Read-only file contents (512 KB cap) |
+| `GET` | `/api/search?workspace=&q=` | Recursive file-name search (200 results) |
+| `GET` | `/api/git?workspace=` | Repository state and `git status` |
+| `POST` | `/api/git/init` | `{workspace}` → `git init` |
+| `GET` | `/api/diff?workspace=&path=` | Unified diff, or a whole untracked file as additions |
+| `GET` | `/api/walkthrough?workspace=` | The last 30 commits |
+| `POST` | `/api/exec` | `{workspace, command}` → run a shell command (120 s, output capped) |
+| `GET`/`POST` | `/api/notes?workspace=` | List or add notes, todos, and plans |
+| `PATCH`/`DELETE` | `/api/notes/:id` | Edit or remove one note |
+| `GET` | `/api/models` | Parsed `cmdc --list-models`, grouped by provider |
+| `GET`/`POST` | `/api/settings` | Update preferences |
+| `GET` | `/api/update?force=1` | Compare local HEAD with GitHub (checks whether the local tip is ahead) |
+| `POST` | `/api/update/apply` | Fast-forward pull; refuses when the tree is dirty |
 
 `/api/turn` returns `text/event-stream`. Frames are `{t: 'start' | 'text' | 'tool' | 'model' |
 'error' | 'done', ...}`.
@@ -253,6 +298,10 @@ Security posture: the cookie is an HMAC of the password (the password itself is 
 the browser), login attempts are rate-limited per address, JSON bodies are capped at 1 MB, prompts
 are capped at 40,000 characters, transcripts are read-only, and every page is served with a strict
 `Content-Security-Policy` and no inline script. Cross-origin `POST /api/turn` is refused.
+
+The workspace surfaces are deliberately powerful: the terminal runs commands, Full access edits
+files, and the update endpoint pulls from GitHub. The password is the boundary. Run this only on a
+tailnet you trust, and rotate the password if a device is lost.
 
 ## Project layout
 
