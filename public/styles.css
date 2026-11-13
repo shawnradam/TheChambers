@@ -971,63 +971,109 @@ a:hover {
   color: var(--muted);
 }
 
-/* The working mark: a ring that spins around the C, with a phrase that fades between words. */
+/* The working mark: the C with a light sweeping across it, a ripple like a drop landing, and two
+   sparks that twinkle out of phase. */
 .thinking {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.5;
   user-select: none;
 }
 
-.c-spin {
+.thinking-text {
+  min-width: 0;
+}
+
+.c-mark {
   position: relative;
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex: none;
+  margin-top: 1px;
 }
 
-.c-spin::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 1.5px solid var(--line);
-  border-top-color: var(--primary, #da702c);
-  border-right-color: var(--primary, #da702c);
-  animation: c-spin 1.05s linear infinite;
-}
-
-.c-spin span {
-  font-size: 10px;
+.c-letter {
+  font-size: 17px;
   font-weight: 700;
   line-height: 1;
-  color: var(--primary-text, #e59a69);
-  animation: c-breathe 2.2s ease-in-out infinite;
+  background: linear-gradient(
+    110deg,
+    var(--primary-text, #e59a69) 0%,
+    var(--primary-text, #e59a69) 34%,
+    #fff4ea 50%,
+    var(--primary-text, #e59a69) 66%,
+    var(--primary-text, #e59a69) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: c-shimmer 2.6s linear infinite;
+}
+
+.c-spark {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #ffd9bd;
+  box-shadow: 0 0 6px rgba(218, 124, 71, 0.85);
+  opacity: 0;
+}
+
+.c-spark.s1 {
+  top: -1px;
+  right: 2px;
+  animation: c-twinkle 2.6s ease-in-out infinite;
+}
+
+.c-spark.s2 {
+  bottom: 1px;
+  left: -1px;
+  width: 2px;
+  height: 2px;
+  animation: c-twinkle 2.6s ease-in-out infinite 0.9s;
+}
+
+.c-spark.s3 {
+  top: 7px;
+  right: -2px;
+  width: 2px;
+  height: 2px;
+  animation: c-twinkle 2.6s ease-in-out infinite 1.7s;
 }
 
 .thinking-text.swap {
-  animation: phrase-swap 0.35s ease;
+  animation: phrase-swap 0.45s ease;
 }
 
-@keyframes c-spin {
+@keyframes c-shimmer {
+  from {
+    background-position: 100% 0;
+  }
   to {
-    transform: rotate(360deg);
+    background-position: -120% 0;
   }
 }
 
-@keyframes c-breathe {
+@keyframes c-twinkle {
   0%,
   100% {
-    opacity: 0.55;
-    transform: scale(0.94);
+    opacity: 0;
+    transform: scale(0.5);
   }
-  50% {
+  40% {
     opacity: 1;
-    transform: scale(1.08);
+    transform: scale(1.15);
+  }
+  62% {
+    opacity: 0.7;
+    transform: scale(0.9);
   }
 }
 
@@ -1043,8 +1089,8 @@ a:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .c-spin::before,
-  .c-spin span,
+  .c-letter,
+  .c-spark,
   .thinking-text.swap {
     animation: none;
   }
