@@ -2,3 +2,14 @@ node_modules/
 *.lnk
 scratch/
 *.log
+
+# Never publish prompts, notes or agent scratch from the development machine.
+prompts/
+prompt/
+notes/
+NOTES.md
+*.prompt.md
+*.local.*
+.commandcode/
+.agents/
+AGENTS.md

@@ -114,6 +114,10 @@ const state = {
   version: '—',
   update: null,
   attachments: [],
+  skills: null,
+  skillsLoading: false,
+  mentionCache: new Map(),
+  picker: {open: false, mode: null, items: [], index: 0, tokenStart: 0, query: '', timer: null},
 };
 
 const live = {bubble: null, tools: new Map(), toolsEl: null, text: '', model: '', timer: null, pinned: true, started: 0};
@@ -2835,11 +2839,407 @@ function closeNav() {
 }
 
 // ---------------------------------------------------------------------------
+// Composer picker: / commands, @ files, $ skills
+// ---------------------------------------------------------------------------
+
+const APP_COMMANDS = [
+  {name: '/new', desc: 'Start a new session', source: 'APP', run: () => newChat()},
+  {name: '/clear', desc: 'Start a new session with empty context', source: 'APP', run: () => newChat()},
+  {name: '/model', desc: 'Choose the model for this session', source: 'APP', run: () => modelMenu()},
+  {name: '/mode', desc: 'Read-only, accept edits, or full access', source: 'APP', run: () => permissionMenu()},
+  {name: '/plan', desc: 'Switch the agent to plan mode', source: 'APP', run: () => setAgent('plan')},
+  {name: '/build', desc: 'Switch the agent back to build', source: 'APP', run: () => setAgent('build')},
+  {name: '/rename', desc: 'Rename the current session', source: 'APP', run: () => renameActiveConversation()},
+  {name: '/export', desc: 'Download the current conversation as JSON', source: 'APP', run: () => exportActiveConversation()},
+  {name: '/context', desc: 'Open the context panel', source: 'APP', run: () => openPanel('context')},
+  {name: '/usage', desc: 'Open context and usage', source: 'APP', run: () => openPanel('context')},
+  {name: '/stop', desc: 'Stop the running turn', source: 'APP', run: () => stopTurn()},
+  {name: '/goal', desc: 'Start a goal with the next message', source: 'APP', run: () => goalToggle()},
+  {name: '/settings', desc: 'Open settings', source: 'APP', run: () => openSettings()},
+  {name: '/help', desc: 'Keyboard shortcuts and commands', source: 'APP', run: () => openShortcuts()},
+];
+
+const STARTER_COMMANDS = [
+  {
+    name: '/explore',
+    desc: 'Get oriented in this codebase',
+    source: 'STARTER',
+    prompt: 'Explore the codebase and tell me how it is structured.',
+  },
+  {
+    name: '/catch-up',
+    desc: 'Re-establish context and pick up where you left off',
+    source: 'STARTER',
+    prompt: 'Catch me up on what changed recently in this project.',
+  },
+  {
+    name: '/debug',
+    desc: 'Guided root-cause investigation for a bug',
+    source: 'STARTER',
+    prompt: 'Debug the current issue in this project.',
+  },
+  {
+    name: '/plan-feature',
+    desc: 'Start a guided feature planning session',
+    source: 'STARTER',
+    prompt: 'Help me plan a feature for this project.',
+  },
+  {
+    name: '/craft-goal',
+    desc: 'Turn an idea into a clear, verifiable goal',
+    source: 'STARTER',
+    prompt: 'Set a goal for this session and work towards it.',
+  },
+  {
+    name: '/review',
+    desc: 'Review uncommitted changes',
+    source: 'STARTER',
+    prompt: 'Review my uncommitted changes.',
+  },
+];
+
+const CMDC_COMMANDS = [
+  {name: '/init', desc: 'Guided AGENTS.md setup for this project', source: 'CMDC'},
+  {name: '/memory', desc: 'Manage Command Code memory', source: 'CMDC'},
+  {name: '/resume', desc: 'Resume a past conversation', source: 'CMDC'},
+  {name: '/fork', desc: 'Fork this conversation into a new session', source: 'CMDC'},
+  {name: '/rewind', desc: 'Restore to a previous checkpoint', source: 'CMDC'},
+  {name: '/tree', desc: 'Browse the session tree', source: 'CMDC'},
+  {name: '/compact', desc: 'Compact the conversation history', source: 'CMDC'},
+  {name: '/config', desc: 'Search and change settings', source: 'CMDC'},
+  {name: '/status', desc: 'Show environment status', source: 'CMDC'},
+  {name: '/todos', desc: 'Manage the session todo list', source: 'CMDC'},
+  {name: '/loop', desc: 'Re-run a task on an interval', source: 'CMDC'},
+  {name: '/btw', desc: 'Ask a quick side question mid-turn', source: 'CMDC'},
+  {name: '/add-dir', desc: 'Manage additional directory scope', source: 'CMDC'},
+  {name: '/mcp', desc: 'Manage MCP server connections', source: 'CMDC'},
+  {name: '/agents', desc: 'Manage agent configurations', source: 'CMDC'},
+  {name: '/design', desc: 'Design partner: audit, build, compose', source: 'CMDC'},
+  {name: '/connect', desc: 'Connect AI providers', source: 'CMDC'},
+  {name: '/update', desc: 'Update Command Code', source: 'CMDC'},
+  {name: '/reload', desc: 'Restart and resume this session', source: 'CMDC'},
+  {name: '/worktree', desc: 'Create, list, or switch git worktrees', source: 'CMDC'},
+  {name: '/skills', desc: 'Browse agent skills', source: 'CMDC'},
+  {name: '/session-file', desc: 'Show the session id and transcript path', source: 'CMDC'},
+  {name: '/changelog', desc: 'See what is new', source: 'CMDC'},
+  {name: '/hotkeys', desc: 'Show all keyboard shortcuts', source: 'CMDC'},
+];
+
+const COMMAND_CATALOG = (() => {
+  const seen = new Map();
+  for (const item of [...APP_COMMANDS, ...STARTER_COMMANDS, ...CMDC_COMMANDS]) {
+    if (!seen.has(item.name)) seen.set(item.name, {...item, kind: 'command'});
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+})();
+
+function setAgent(agent) {
+  state.agent = agent;
+  localStorage.setItem('thechambers-agent', agent);
+  refreshComposerState();
+}
+
+function renameActiveConversation() {
+  if (!state.conversation) {
+    toast('Open a session first.');
+    return;
+  }
+  const conv = state.conversation;
+  openPrompt({
+    title: 'Rename session',
+    label: 'Name',
+    value: conv.title || '',
+    confirm: 'Rename',
+    onConfirm: async (title) => {
+      try {
+        await api(`/api/conversations/${conv.id}`, {method: 'PATCH', body: JSON.stringify({title})});
+        conv.title = title;
+        if (state.activeId === conv.id) els.title.textContent = title;
+        await loadState();
+      } catch (err) {
+        toast(err.message);
+      }
+    },
+  });
+}
+
+function exportActiveConversation() {
+  if (!state.conversation) {
+    toast('Open a session first.');
+    return;
+  }
+  exportConversation(state.conversation);
+}
+
+function relativeToWorkspace(fullPath) {
+  return String(fullPath || '')
+    .replace(state.workspace, '')
+    .replace(/^[\\/]/, '')
+    .replace(/\\/g, '/');
+}
+
+function composerToken() {
+  const value = els.input.value;
+  const caret = els.input.selectionStart == null ? value.length : els.input.selectionStart;
+  const before = value.slice(0, caret);
+  let match = before.match(/(^|[\s])\/([A-Za-z0-9:_-]*)$/);
+  if (match) return {mode: 'command', query: match[2], start: caret - match[2].length - 1};
+  match = before.match(/(^|[\s])@([^\s]*)$/);
+  if (match) return {mode: 'mention', query: match[2], start: caret - match[2].length - 1};
+  match = before.match(/(^|[\s])\$([^\s]*)$/);
+  if (match) return {mode: 'skill', query: match[2], start: caret - match[2].length - 1};
+  return null;
+}
+
+function ensureSkills() {
+  if (state.skills || state.skillsLoading) return;
+  state.skillsLoading = true;
+  api('/api/skills')
+    .then((data) => {
+      state.skills = data.skills || [];
+    })
+    .catch(() => {
+      state.skills = [];
+    })
+    .finally(() => {
+      state.skillsLoading = false;
+      if (state.picker.open && state.picker.mode === 'skill') {
+        state.picker.items = pickerItems('skill', state.picker.query);
+        paintPicker();
+      }
+    });
+}
+
+function scheduleMentions(query) {
+  clearTimeout(state.picker.timer);
+  state.picker.timer = setTimeout(async () => {
+    state.picker.timer = null;
+    const key = query.toLowerCase();
+    try {
+      let entries = [];
+      if (!key) {
+        const data = await api(`/api/files?workspace=${encodeURIComponent(state.workspace)}`);
+        entries = (data.entries || []).slice(0, 40);
+      } else {
+        const data = await api(
+          `/api/search?workspace=${encodeURIComponent(state.workspace)}&q=${encodeURIComponent(key)}`,
+        );
+        entries = (data.entries || []).slice(0, 40);
+      }
+      state.mentionCache.set(
+        key,
+        entries.map((entry) => {
+          const rel = relativeToWorkspace(entry.path) + (entry.dir ? '/' : '');
+          const size = entry.dir ? 'folder' : `${Math.max(1, Math.round((entry.size || 0) / 1024))} KB`;
+          return {kind: 'mention', name: rel, desc: size, insert: rel};
+        }),
+      );
+    } catch {
+      state.mentionCache.set(key, []);
+    }
+    if (state.picker.open && state.picker.mode === 'mention' && state.picker.query.toLowerCase() === key) {
+      state.picker.items = state.mentionCache.get(key) || [];
+      state.picker.index = Math.min(state.picker.index, Math.max(0, state.picker.items.length - 1));
+      paintPicker();
+    }
+  }, 160);
+}
+
+function pickerItems(mode, query) {
+  const needle = query.toLowerCase();
+  if (mode === 'command') {
+    return COMMAND_CATALOG.filter(
+      (item) =>
+        item.name.slice(1).toLowerCase().includes(needle) || item.desc.toLowerCase().includes(needle),
+    );
+  }
+  if (mode === 'skill') {
+    ensureSkills();
+    return (state.skills || [])
+      .filter(
+        (skill) =>
+          skill.name.toLowerCase().includes(needle) ||
+          (skill.description || '').toLowerCase().includes(needle),
+      )
+      .map((skill) => ({
+        kind: 'skill',
+        name: `$${skill.name}`,
+        desc: skill.description || 'Skill',
+        insert: skill.name,
+        source: 'SKILL',
+      }));
+  }
+  const key = query.toLowerCase();
+  if (state.mentionCache.has(key)) return state.mentionCache.get(key);
+  scheduleMentions(query);
+  return [];
+}
+
+function ensurePickerElement() {
+  let menu = document.querySelector('.composer-menu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.className = 'composer-menu';
+    menu.hidden = true;
+    menu.addEventListener('mousedown', (event) => event.preventDefault());
+    menu.addEventListener('click', (event) => {
+      const row = event.target.closest('[data-picker-index]');
+      if (!row) return;
+      state.picker.index = Number(row.dataset.pickerIndex);
+      acceptPicker();
+    });
+    menu.addEventListener('mousemove', (event) => {
+      const row = event.target.closest('[data-picker-index]');
+      if (row) setPickerIndex(Number(row.dataset.pickerIndex));
+    });
+    els.composer.append(menu);
+  }
+  return menu;
+}
+
+function paintPicker() {
+  const menu = ensurePickerElement();
+  if (!state.picker.open) {
+    menu.hidden = true;
+    return;
+  }
+  menu.hidden = false;
+  const {items, index, mode, query} = state.picker;
+  let body;
+  if (!items.length) {
+    const label =
+      mode === 'mention'
+        ? query
+          ? 'No matching files.'
+          : 'Loading files…'
+        : mode === 'skill'
+          ? 'Loading skills…'
+          : 'No matching commands.';
+    body = `<div class="composer-menu-empty">${esc(label)}</div>`;
+  } else {
+    body = items
+      .map(
+        (item, i) =>
+          `<div class="composer-command${i === index ? ' selected' : ''}" data-picker-index="${i}" role="option" aria-selected="${i === index}">${
+            item.kind === 'command' ? '' : icon(item.kind === 'skill' ? 'spark' : 'file')
+          }<span class="name">${esc(item.name)}</span><span class="desc">${esc(item.desc || '')}</span>${
+            item.source ? `<span class="source">${esc(item.source)}</span>` : ''
+          }</div>`,
+      )
+      .join('');
+  }
+  menu.innerHTML = `<div class="composer-menu-list">${body}</div><div class="composer-menu-foot">↑↓ navigate · Enter select · Esc close</div>`;
+  const selected = menu.querySelector('.composer-command.selected');
+  if (selected) selected.scrollIntoView({block: 'nearest'});
+}
+
+function setPickerIndex(next) {
+  const count = state.picker.items.length;
+  if (!count) return;
+  state.picker.index = (next + count) % count;
+  const menu = ensurePickerElement();
+  menu.querySelectorAll('.composer-command').forEach((row, i) => {
+    row.classList.toggle('selected', i === state.picker.index);
+    row.setAttribute('aria-selected', String(i === state.picker.index));
+  });
+  const selected = menu.querySelector('.composer-command.selected');
+  if (selected) selected.scrollIntoView({block: 'nearest'});
+}
+
+function closePicker() {
+  if (state.picker.timer) {
+    clearTimeout(state.picker.timer);
+    state.picker.timer = null;
+  }
+  state.picker.open = false;
+  const menu = document.querySelector('.composer-menu');
+  if (menu) menu.hidden = true;
+}
+
+function acceptPicker() {
+  const item = state.picker.items[state.picker.index];
+  if (!item) return;
+  const value = els.input.value;
+  const caret = els.input.selectionStart == null ? value.length : els.input.selectionStart;
+  const start = state.picker.tokenStart;
+  closePicker();
+
+  if (item.kind === 'command' && item.run) {
+    els.input.value = value.slice(0, start) + value.slice(caret);
+    const pos = Math.min(start, els.input.value.length);
+    els.input.setSelectionRange(pos, pos);
+    autoGrow();
+    updateSendState();
+    item.run();
+    return;
+  }
+
+  let insert = item.name + ' ';
+  if (item.kind === 'command' && item.prompt) insert = item.prompt;
+  if (item.kind === 'mention') insert = `@${item.insert} `;
+  if (item.kind === 'skill') insert = `$${item.insert} `;
+
+  els.input.value = value.slice(0, start) + insert + value.slice(caret);
+  const pos = start + insert.length;
+  els.input.focus();
+  els.input.setSelectionRange(pos, pos);
+  autoGrow();
+  updateSendState();
+}
+
+function updatePicker() {
+  const token = composerToken();
+  if (!token) {
+    closePicker();
+    return;
+  }
+  const previous = state.picker.items[state.picker.index];
+  const sameQuery =
+    state.picker.open && state.picker.mode === token.mode && state.picker.query === token.query;
+  const items = pickerItems(token.mode, token.query);
+  const kept = previous ? items.findIndex((item) => item.name === previous.name) : -1;
+  state.picker.open = true;
+  state.picker.mode = token.mode;
+  state.picker.query = token.query;
+  state.picker.tokenStart = token.start;
+  state.picker.items = items;
+  state.picker.index = sameQuery && kept >= 0 ? kept : 0;
+  if (state.picker.index >= items.length) state.picker.index = Math.max(0, items.length - 1);
+  paintPicker();
+}
+
+function handlePickerKeys(event) {
+  if (!state.picker.open) return false;
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    setPickerIndex(state.picker.index + 1);
+    return true;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    setPickerIndex(state.picker.index - 1);
+    return true;
+  }
+  if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+    event.preventDefault();
+    acceptPicker();
+    return true;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closePicker();
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
 els.composer.addEventListener('submit', (event) => {
   event.preventDefault();
+  closePicker();
   const typed = els.input.value.trim();
   const files = state.attachments.slice();
   if ((!typed && !files.length) || state.busy) return;
@@ -2863,9 +3263,16 @@ els.composer.addEventListener('submit', (event) => {
 els.input.addEventListener('input', () => {
   autoGrow();
   updateSendState();
+  updatePicker();
+});
+
+els.input.addEventListener('click', () => updatePicker());
+els.input.addEventListener('keyup', (event) => {
+  if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) updatePicker();
 });
 
 els.input.addEventListener('keydown', (event) => {
+  if (handlePickerKeys(event)) return;
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   if (event.key === 'Enter' && !event.shiftKey && !coarse) {
     event.preventDefault();
@@ -2964,6 +3371,12 @@ document.addEventListener('click', (event) => {
   }
 });
 
+document.addEventListener('mousedown', (event) => {
+  if (!state.picker.open) return;
+  if (event.target === els.input || event.target.closest('.composer-menu')) return;
+  closePicker();
+});
+
 els.newChat.addEventListener('click', newChat);
 els.newChatGroup.addEventListener('click', newChat);
 
@@ -3032,6 +3445,7 @@ els.scroll.addEventListener('scroll', () => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
+    closePicker();
     closeMenus();
     closeNav();
     if (!els.panel.hidden) closePanel();
