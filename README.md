@@ -113,21 +113,31 @@ To rotate it, replace the file's contents and restart the server. All devices wi
 
 ## Using it
 
+The interface follows prior art's layout: a 280px sidebar, a centered hero on an empty session,
+and one composer that follows you into the conversation.
+
 ### Sidebar
 
-- **Project dropdown** — working directories Command Code already knows, newest first. **+** adds
-  a folder by full path (it must exist on this machine).
-- **Chats** — conversations this app tracks. Each remembers its own folder; the subtitle shows the
-  project and when it last changed.
-- **Sessions** — the real session files in the selected project, newest first. Anything written in
-  the last two minutes reads `● live now` — that is how you find the terminal session you are in.
-  Tap one to resume it with its full transcript.
+- **Chats** — conversations this app tracks, most recent first. The sidebar shows the active one
+  and a green dot while a turn is running.
+- **In work** — appears only while something is running, so you can jump back to it.
+- **Projects** — every working directory Command Code has sessions for, with a session count.
+  Click one to expand it: each nested row is a real session file, newest first, and anything
+  written in the last two minutes is marked with a green dot. Tap a session to resume it with its
+  full transcript. **+** adds a folder by full path.
+
+The magnifier filters chats and sessions by text; the panel icon collapses the sidebar.
 
 ### Composer
 
-- Enter sends on a physical keyboard; on touch devices the button does.
+- Placeholder: *Plan, build, or ask.* Enter sends on a physical keyboard; on touch devices the
+  arrow button does.
+- **Read-only / Full access** chip on the left of the composer bar.
+- The model in use appears next to it once the first frame arrives.
+- In an empty session, the six suggestion chips under the composer seed a prompt
+  (explore the codebase, catch me up, weigh my options, plan a feature, debug an issue, review
+  changes).
 - **Stop** kills the whole process tree. Everything that had already committed stays on disk.
-- The model in use is shown under the box once the first response frame arrives.
 
 ### Permission modes
 

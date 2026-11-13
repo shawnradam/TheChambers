@@ -980,7 +980,7 @@ const handler = async (req, res) => {
       // A write landed after our last turn finished, so something else (a terminal, or another
       // device) is driving this session too.
       const externalActive = Boolean(
-        item && conv.lastTurnAt && item.updatedAt > conv.lastTurnAt + 2000,
+        item && conv.lastTurnAt && item.updatedAt > conv.lastTurnAt + 800,
       );
       return json(res, 200, {
         ...publicConversation(conv),

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b0d10" />
+    <meta name="theme-color" content="#171515" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>TheChambers</title>
     <link rel="stylesheet" href="/styles.css" />
@@ -11,59 +11,94 @@
   <body>
     <div id="app">
       <aside id="sidebar">
-        <header class="side-head">
-          <span class="brand">TheChambers</span>
-          <button id="new-chat" class="ghost" type="button">New</button>
-        </header>
-
-        <div class="project-row">
-          <select id="project" aria-label="Workspace"></select>
-          <button id="add-project" class="ghost icon" type="button" title="Add a folder">+</button>
+        <div class="side-top">
+          <button id="sidebar-toggle" class="icon-btn" type="button" title="Toggle sidebar">▤</button>
+          <button id="new-chat" class="new-session" type="button"><span class="plus">＋</span> New session</button>
         </div>
 
-        <div class="tabs" role="tablist">
-          <button id="tab-chats" class="tab active" type="button" role="tab">Chats</button>
-          <button id="tab-sessions" class="tab" type="button" role="tab">Sessions</button>
+        <div class="side-tools">
+          <button id="search-toggle" class="icon-btn" type="button" title="Search">⌕</button>
+          <button id="add-project" class="icon-btn" type="button" title="Add project">▣</button>
+          <button id="tab-sessions" class="icon-btn" type="button" title="All sessions">☰</button>
+          <button id="logout" class="icon-btn" type="button" title="Sign out">⋯</button>
         </div>
 
-        <nav id="conversation-list" aria-label="Conversations"></nav>
-        <nav id="session-list" aria-label="Command Code sessions" hidden></nav>
+        <div id="search-wrap" class="search-wrap" hidden>
+          <input id="search" type="search" placeholder="Search chats and sessions" autocomplete="off" />
+        </div>
+
+        <nav id="sidebar-scroll">
+          <section class="group">
+            <h2>Chats</h2>
+            <div id="chat-list" class="items"></div>
+          </section>
+
+          <section class="group" id="work-group" hidden>
+            <h2>In work</h2>
+            <div id="work-list" class="items"></div>
+          </section>
+
+          <section class="group">
+            <h2>Projects</h2>
+            <div id="project-list" class="items"></div>
+          </section>
+        </nav>
 
         <footer class="side-foot">
-          <div id="workspace" class="meta"></div>
-          <button id="logout" class="ghost small" type="button">Sign out</button>
+          <span id="workspace" class="meta"></span>
         </footer>
       </aside>
 
       <main id="main">
         <header id="topbar">
-          <button id="menu" class="ghost icon" type="button" aria-label="Conversations">☰</button>
-          <div class="title-block">
-            <h1 id="conv-title">New conversation</h1>
+          <button id="menu" class="icon-btn" type="button" aria-label="Sessions">☰</button>
+          <div class="tb-title">
+            <h1 id="conv-title">New session</h1>
             <div id="conv-meta" class="meta"></div>
           </div>
           <span id="live-pill" class="pill" hidden>live</span>
-          <span id="status-dot" class="dot" title="idle"></span>
+          <button id="new-chat-top" class="icon-btn" type="button" title="New session">＋</button>
         </header>
 
-        <section id="messages" aria-live="polite"></section>
+        <div id="scroll">
+          <section id="empty" class="empty-state">
+            <h2>What are we working on?</h2>
+
+            <div class="chooser">
+              <span class="chooser-label">Choose project</span>
+              <select id="project" aria-label="Project"></select>
+            </div>
+          </section>
+
+          <section id="messages" aria-live="polite"></section>
+        </div>
 
         <form id="composer">
           <p id="external-note" class="note external" hidden>
-            This session is also open in a terminal. Run <code>/resume</code> there to load these
-            messages.
+            This session is also open in a terminal. Run <code>/resume</code> there to load these messages.
           </p>
-          <div class="composer-row">
-            <textarea id="input" rows="1" placeholder="Ask Command Code…" autocomplete="off"></textarea>
-            <button id="send" class="primary" type="submit">Send</button>
-            <button id="stop" class="danger" type="button" hidden>Stop</button>
+
+          <div class="composer-card">
+            <textarea id="input" rows="1" placeholder="Plan, build, or ask." autocomplete="off"></textarea>
+            <div class="composer-bar">
+              <button id="add-project-bar" class="chip square" type="button" title="Add project">＋</button>
+              <select id="mode" class="chip-select" aria-label="Permission mode">
+                <option value="read-only">Read-only</option>
+                <option value="full">Full access</option>
+              </select>
+              <span id="model" class="meta model"></span>
+              <button id="stop" class="send stop" type="button" aria-label="Stop" hidden>■</button>
+              <button id="send" class="send" type="submit" aria-label="Send">↑</button>
+            </div>
           </div>
-          <div class="composer-foot">
-            <select id="mode" aria-label="Permission mode">
-              <option value="read-only">Read-only</option>
-              <option value="full">Full access</option>
-            </select>
-            <span id="model" class="meta"></span>
+
+          <div id="suggestions" class="chips">
+            <button class="chip" type="button" data-prompt="Explore the codebase and tell me how it is structured.">Explore the codebase</button>
+            <button class="chip" type="button" data-prompt="Catch me up on what changed recently in this project.">Catch me up</button>
+            <button class="chip" type="button" data-prompt="Weigh the options for what I should do next here.">Weigh my options</button>
+            <button class="chip" type="button" data-prompt="Help me plan a feature for this project.">Start feature planning</button>
+            <button class="chip" type="button" data-prompt="Debug the current issue in this project.">Debug an issue</button>
+            <button class="chip" type="button" data-prompt="Review my uncommitted changes.">Review my changes</button>
           </div>
         </form>
       </main>

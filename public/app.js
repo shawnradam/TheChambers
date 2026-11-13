@@ -4,42 +4,51 @@ const $ = (selector) => document.querySelector(selector);
 
 const els = {
   app: $('#app'),
-  list: $('#conversation-list'),
-  sessionList: $('#session-list'),
-  messages: $('#messages'),
-  title: $('#conv-title'),
+  main: $('#main'),
+  sidebar: $('#sidebar'),
+  sidebarToggle: $('#sidebar-toggle'),
+  newChat: $('#new-chat'),
+  newChatTop: $('#new-chat-top'),
+  searchToggle: $('#search-toggle'),
+  searchWrap: $('#search-wrap'),
+  search: $('#search'),
+  addProject: $('#add-project'),
+  addProjectBar: $('#add-project-bar'),
+  tabSessions: $('#tab-sessions'),
+  logout: $('#logout'),
+  chatList: $('#chat-list'),
+  workGroup: $('#work-group'),
+  workList: $('#work-list'),
+  projectList: $('#project-list'),
+  workspace: $('#workspace'),
+  menu: $('#menu'),
+  convTitle: $('#conv-title'),
   convMeta: $('#conv-meta'),
-  status: $('#status-dot'),
-  input: $('#input'),
+  livePill: $('#live-pill'),
+  scroll: $('#scroll'),
+  empty: $('#empty'),
+  messages: $('#messages'),
+  project: $('#project'),
+  suggestions: $('#suggestions'),
   form: $('#composer'),
+  input: $('#input'),
   send: $('#send'),
   stop: $('#stop'),
   mode: $('#mode'),
   model: $('#model'),
-  workspace: $('#workspace'),
-  project: $('#project'),
-  addProject: $('#add-project'),
-  tabChats: $('#tab-chats'),
-  tabSessions: $('#tab-sessions'),
-  menu: $('#menu'),
-  scrim: $('#scrim'),
-  newChat: $('#new-chat'),
-  logout: $('#logout'),
-  livePill: $('#live-pill'),
   externalNote: $('#external-note'),
+  scrim: $('#scrim'),
 };
 
 const state = {
   conversations: [],
   projects: [],
-  sessions: [],
+  sessions: new Map(), // workspace path -> sessions[]
+  expanded: new Set(),
   workspace: localStorage.getItem('thechambers-workspace') || '',
   serverWorkspace: '',
-  host: '',
-  port: '',
+  filter: '',
   activeId: null,
-  activeWorkspace: '',
-  tab: 'chats',
   busy: false,
   pollTimer: null,
   signature: '',
@@ -48,7 +57,7 @@ const state = {
 const live = {bubble: null, tools: new Map(), toolsEl: null, text: '', timer: null, pinned: true};
 
 // ---------------------------------------------------------------------------
-// Small helpers
+// Text helpers
 // ---------------------------------------------------------------------------
 
 function escapeHtml(value) {
@@ -142,10 +151,7 @@ function renderMarkdown(source) {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: {'Content-Type': 'application/json'},
-    ...options,
-  });
+  const res = await fetch(path, {headers: {'Content-Type': 'application/json'}, ...options});
   if (res.status === 401) {
     location.href = '/login';
     throw new Error('Not signed in.');
@@ -153,16 +159,6 @@ async function api(path, options = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
   return data;
-}
-
-function nearBottom() {
-  const el = els.messages;
-  return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-}
-
-function scrollDown(force = false) {
-  if (!force && !live.pinned) return;
-  els.messages.scrollTop = els.messages.scrollHeight;
 }
 
 function baseName(fullPath) {
@@ -175,14 +171,23 @@ function relativeTime(value) {
   const ts = typeof value === 'number' ? value : Date.parse(value);
   if (!ts) return '';
   const diff = Date.now() - ts;
-  if (diff < 60_000) return 'just now';
-  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h ago`;
-  if (diff < 7 * 86_400_000) return `${Math.round(diff / 86_400_000)}d ago`;
+  if (diff < 60_000) return 'now';
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m`;
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h`;
+  if (diff < 7 * 86_400_000) return `${Math.round(diff / 86_400_000)}d`;
   return new Date(ts).toLocaleDateString();
 }
 
-// Cheap fingerprint of a transcript: if this changes, another process appended to the session.
+function nearBottom() {
+  const el = els.scroll;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+}
+
+function scrollDown(force = false) {
+  if (!force && !live.pinned) return;
+  els.scroll.scrollTop = els.scroll.scrollHeight;
+}
+
 function conversationSignature(messages) {
   if (!messages.length) return '0';
   const last = messages[messages.length - 1];
@@ -195,108 +200,170 @@ function setExternal(active) {
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar: projects, chats, sessions
+// Sidebar
 // ---------------------------------------------------------------------------
 
-function renderProjects() {
-  els.project.textContent = '';
-  const paths = new Set();
-  for (const project of state.projects) paths.add(project.path);
-  if (state.workspace) paths.add(state.workspace);
+function itemButton(label, {glyph, active, live: isLive, count, nested} = {}) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `item${nested ? ' nested' : ''}${active ? ' active' : ''}`;
 
-  for (const path of paths) {
-    const option = document.createElement('option');
-    option.value = path;
-    option.textContent = baseName(path);
-    option.title = path;
-    if (path === state.workspace) option.selected = true;
-    els.project.append(option);
+  if (glyph) {
+    const span = document.createElement('span');
+    span.className = 'glyph';
+    span.textContent = glyph;
+    button.append(span);
   }
+
+  const text = document.createElement('span');
+  text.className = 'label';
+  text.textContent = label;
+  button.append(text);
+
+  if (isLive) {
+    const dot = document.createElement('span');
+    dot.className = 'live-dot';
+    button.append(dot);
+  }
+  if (count) {
+    const badge = document.createElement('span');
+    badge.className = 'count';
+    badge.textContent = String(count);
+    button.append(badge);
+  }
+  return button;
 }
 
-function renderList() {
-  els.list.textContent = '';
-  if (!state.conversations.length) {
+function matches(text) {
+  if (!state.filter) return true;
+  return (text || '').toLowerCase().includes(state.filter.toLowerCase());
+}
+
+function renderChats() {
+  els.chatList.textContent = '';
+  const chats = state.conversations.filter((conv) => matches(conv.title));
+  if (!chats.length) {
     const empty = document.createElement('p');
-    empty.className = 'meta';
-    empty.style.padding = '8px 10px';
-    empty.textContent = 'No chats yet.';
-    els.list.append(empty);
+    empty.className = 'empty-row';
+    empty.textContent = state.filter ? 'No matching chats.' : 'No chats yet.';
+    els.chatList.append(empty);
     return;
   }
-  for (const conv of state.conversations) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'conv';
-    if (conv.id === state.activeId) button.classList.add('active');
-    if (conv.running) button.classList.add('running');
-
-    const title = document.createElement('span');
-    title.className = 'conv-title';
-    title.textContent = conv.title || 'Untitled';
-    const sub = document.createElement('span');
-    sub.className = 'conv-sub';
-    sub.textContent = `${baseName(conv.workspace)} · ${relativeTime(conv.updatedAt)}`;
-    button.append(title, sub);
-
+  for (const conv of chats.slice(0, 8)) {
+    const button = itemButton(conv.title || 'Untitled', {
+      active: conv.id === state.activeId,
+      live: conv.running,
+    });
+    button.title = `${conv.workspace} · ${relativeTime(conv.updatedAt)}`;
     button.addEventListener('click', () => {
       closeNav();
       openConversation(conv.id);
     });
-    els.list.append(button);
+    els.chatList.append(button);
   }
 }
 
-function renderSessions() {
-  els.sessionList.textContent = '';
+function renderWork() {
+  const working = state.conversations.filter((conv) => conv.running);
+  els.workGroup.hidden = !working.length;
+  if (!working.length) return;
 
-  const header = document.createElement('p');
-  header.className = 'meta';
-  header.style.padding = '8px 10px';
-  header.textContent = `Sessions in ${baseName(state.workspace) || 'this project'}`;
-  els.sessionList.append(header);
+  els.workList.textContent = '';
+  for (const conv of working) {
+    const button = itemButton(conv.title || 'Untitled', {active: conv.id === state.activeId, live: true});
+    button.addEventListener('click', () => {
+      closeNav();
+      openConversation(conv.id);
+    });
+    els.workList.append(button);
+  }
+}
 
-  if (!state.sessions.length) {
+function renderProjects() {
+  els.projectList.textContent = '';
+  const projects = state.projects.filter((project) => matches(project.name) || matches(project.path));
+
+  if (!projects.length) {
     const empty = document.createElement('p');
-    empty.className = 'meta';
-    empty.style.padding = '0 10px 8px';
-    empty.textContent = 'No sessions on disk for this folder yet.';
-    els.sessionList.append(empty);
+    empty.className = 'empty-row';
+    empty.textContent = 'No projects yet.';
+    els.projectList.append(empty);
     return;
   }
 
-  for (const session of state.sessions) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'conv';
-
-    const title = document.createElement('span');
-    title.className = 'conv-title';
-    title.textContent = session.title || session.id.slice(0, 8);
-    const sub = document.createElement('span');
-    sub.className = 'conv-sub';
-    sub.textContent = session.active
-      ? `● live now · ${relativeTime(session.updatedAt)}`
-      : `${relativeTime(session.updatedAt)}${session.model ? ` · ${session.model}` : ''}`;
-    button.append(title, sub);
-
-    button.addEventListener('click', () => {
-      closeNav();
-      resumeSession(session.id);
+  for (const project of projects) {
+    const isOpen = state.expanded.has(project.path);
+    const selected = project.path === state.workspace;
+    const row = itemButton(`${project.name}`, {
+      glyph: isOpen ? '▾' : '▸',
+      active: selected && !state.activeId,
+      count: project.sessions || 0,
     });
-    els.sessionList.append(button);
+    row.title = project.path;
+    row.addEventListener('click', () => toggleProject(project.path));
+    els.projectList.append(row);
+
+    if (!isOpen) continue;
+
+    const sessions = (state.sessions.get(project.path) || []).filter(
+      (session) => matches(session.title || session.id),
+    );
+
+    if (!sessions.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-row';
+      empty.style.paddingLeft = '30px';
+      empty.textContent = 'No sessions yet.';
+      els.projectList.append(empty);
+      continue;
+    }
+
+    for (const session of sessions.slice(0, 6)) {
+      const button = itemButton(session.title || session.id.slice(0, 8), {
+        nested: true,
+        live: session.active,
+      });
+      button.title = `${relativeTime(session.updatedAt)}${session.model ? ` · ${session.model}` : ''}`;
+      button.addEventListener('click', () => {
+        closeNav();
+        resumeSession(session.id);
+      });
+      els.projectList.append(button);
+    }
   }
 }
 
-function setTab(tab) {
-  state.tab = tab;
-  const chats = tab === 'chats';
-  els.tabChats.classList.toggle('active', chats);
-  els.tabSessions.classList.toggle('active', !chats);
-  els.list.hidden = !chats;
-  els.sessionList.hidden = chats;
-  if (!chats) loadSessions();
+function renderSidebar() {
+  renderChats();
+  renderWork();
+  renderProjects();
 }
+
+function renderProjectsSelect() {
+  els.project.textContent = '';
+  const seen = new Set();
+  for (const project of state.projects) {
+    if (seen.has(project.path)) continue;
+    seen.add(project.path);
+    const option = document.createElement('option');
+    option.value = project.path;
+    option.textContent = project.name;
+    option.title = project.path;
+    if (project.path === state.workspace) option.selected = true;
+    els.project.append(option);
+  }
+  if (state.workspace && !seen.has(state.workspace)) {
+    const option = document.createElement('option');
+    option.value = state.workspace;
+    option.textContent = baseName(state.workspace);
+    option.selected = true;
+    els.project.append(option);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
 
 async function loadProjects() {
   const data = await api('/api/projects');
@@ -307,39 +374,50 @@ async function loadProjects() {
     state.workspace = state.serverWorkspace;
     localStorage.setItem('thechambers-workspace', state.workspace);
   }
-  renderProjects();
   els.workspace.textContent = state.workspace;
   els.workspace.title = state.workspace;
+  renderProjectsSelect();
 }
 
-async function loadSessions() {
-  if (!state.workspace) return;
-  try {
-    const data = await api(`/api/sessions?workspace=${encodeURIComponent(state.workspace)}`);
-    state.sessions = data.sessions || [];
-  } catch (err) {
-    state.sessions = [];
-    console.error(err);
-  }
-  renderSessions();
+async function loadState() {
+  const data = await api('/api/state');
+  state.conversations = data.conversations || [];
+  renderSidebar();
 }
 
-async function resumeSession(sessionId) {
+async function loadSessions(workspace = state.workspace) {
+  if (!workspace) return;
   try {
-    const conv = await api('/api/sessions/resume', {
-      method: 'POST',
-      body: JSON.stringify({sessionId}),
-    });
-    setTab('chats');
-    await openConversation(conv.id);
-    await loadState();
-  } catch (err) {
-    els.convMeta.textContent = err.message;
+    const data = await api(`/api/sessions?workspace=${encodeURIComponent(workspace)}`);
+    state.sessions.set(workspace, data.sessions || []);
+  } catch {
+    state.sessions.set(workspace, []);
   }
+  renderSidebar();
+}
+
+async function setWorkspace(workspace, {expand = true} = {}) {
+  state.workspace = workspace;
+  localStorage.setItem('thechambers-workspace', workspace);
+  els.workspace.textContent = workspace;
+  els.workspace.title = workspace;
+  renderProjectsSelect();
+  if (expand) state.expanded.add(workspace);
+  await loadSessions(workspace);
+  renderSidebar();
+}
+
+async function toggleProject(workspace) {
+  if (state.expanded.has(workspace)) {
+    state.expanded.delete(workspace);
+    renderSidebar();
+    return;
+  }
+  await setWorkspace(workspace);
 }
 
 // ---------------------------------------------------------------------------
-// Messages
+// Conversation view
 // ---------------------------------------------------------------------------
 
 function messageNode(role) {
@@ -387,7 +465,6 @@ function startAssistant() {
   live.tools = new Map();
   live.text = '';
   live.pinned = true;
-  // Command Code takes a moment to boot; say so instead of showing an empty bubble.
   live.bubble.innerHTML = '<p class="pending">Starting Command Code<span class="dots">…</span></p>';
   scrollDown(true);
 }
@@ -423,10 +500,20 @@ function upsertTool(payload) {
     if (name) name.textContent = payload.name;
   }
   if (payload.result) {
-    const body = node.querySelector('pre');
-    body.textContent = payload.result;
+    node.querySelector('pre').textContent = payload.result;
   }
   scrollDown();
+}
+
+function showEmptyState(title = 'New session') {
+  els.main.classList.add('empty-mode');
+  els.empty.hidden = false;
+  els.messages.hidden = true;
+  els.messages.textContent = '';
+  els.suggestions.hidden = false;
+  els.convTitle.textContent = title;
+  els.convMeta.textContent = state.workspace ? baseName(state.workspace) : '';
+  setExternal(false);
 }
 
 function renderHistory(messages) {
@@ -435,14 +522,10 @@ function renderHistory(messages) {
   live.toolsEl = null;
   live.tools = new Map();
 
-  if (!messages.length) {
-    const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.textContent =
-      'Ask Command Code to read, explain, or change code in this project. Read-only mode is the safe default; Full access lets it write files and run commands.';
-    els.messages.append(empty);
-    return;
-  }
+  els.main.classList.remove('empty-mode');
+  els.empty.hidden = true;
+  els.messages.hidden = false;
+  els.suggestions.hidden = true;
 
   for (const message of messages) {
     if (message.role === 'user') {
@@ -475,32 +558,18 @@ function renderHistory(messages) {
   scrollDown(true);
 }
 
-// ---------------------------------------------------------------------------
-// Conversations
-// ---------------------------------------------------------------------------
-
-async function loadState() {
-  const data = await api('/api/state');
-  state.conversations = data.conversations || [];
-  state.host = data.host || '';
-  state.port = data.port || '';
-  renderList();
-  if (state.tab === 'sessions') loadSessions();
-}
-
 async function openConversation(id) {
   try {
     const conv = await api(`/api/conversations/${id}`);
     state.activeId = conv.id;
-    state.activeWorkspace = conv.workspace || '';
-    els.title.textContent = conv.title || 'Conversation';
+    els.convTitle.textContent = conv.title || 'Conversation';
     const bits = [baseName(conv.workspace)];
     if (conv.sessionId) bits.push(`session ${conv.sessionId.slice(0, 8)}`);
     els.convMeta.textContent = bits.filter(Boolean).join(' · ');
     state.signature = conversationSignature(conv.messages || []);
     renderHistory(conv.messages || []);
     setExternal(Boolean(conv.externalActive));
-    renderList();
+    renderSidebar();
     startWatching();
   } catch (err) {
     els.convMeta.textContent = err.message;
@@ -519,8 +588,6 @@ async function refreshConversation() {
   }
 }
 
-// Polls the session while the conversation is open. Turns written by a terminal land on disk
-// when they commit, so this is what makes the two views feel like one chat.
 function startWatching() {
   stopWatching();
   state.pollTimer = setInterval(pollConversation, 2500);
@@ -541,34 +608,41 @@ async function pollConversation() {
     const signature = conversationSignature(conv.messages || []);
     if (signature === state.signature) return;
     state.signature = signature;
-    const pinned = nearBottom();
-    live.pinned = pinned;
+    live.pinned = nearBottom();
     renderHistory(conv.messages || []);
-    if (conv.title) els.title.textContent = conv.title;
+    if (conv.title) els.convTitle.textContent = conv.title;
   } catch {
-    /* a dropped poll is harmless; the next one retries */
+    /* a dropped poll is harmless */
   }
 }
 
 function newChat() {
   state.activeId = null;
-  state.activeWorkspace = state.workspace;
   state.signature = '';
   stopWatching();
-  setExternal(false);
-  els.title.textContent = 'New conversation';
-  els.convMeta.textContent = baseName(state.workspace);
-  renderHistory([]);
-  renderList();
+  showEmptyState();
+  renderSidebar();
   closeNav();
   els.input.focus();
+}
+
+async function resumeSession(sessionId) {
+  try {
+    const conv = await api('/api/sessions/resume', {
+      method: 'POST',
+      body: JSON.stringify({sessionId}),
+    });
+    await openConversation(conv.id);
+    await loadState();
+  } catch (err) {
+    els.convMeta.textContent = err.message;
+  }
 }
 
 function setBusy(busy) {
   state.busy = busy;
   els.send.hidden = busy;
   els.stop.hidden = !busy;
-  els.status.classList.toggle('busy', busy);
 }
 
 // ---------------------------------------------------------------------------
@@ -579,7 +653,6 @@ function handleStreamEvent(payload) {
   switch (payload.t) {
     case 'start':
       state.activeId = payload.conversationId;
-      state.activeWorkspace = payload.workspace || state.activeWorkspace;
       break;
     case 'text':
       live.text += payload.d || '';
@@ -598,7 +671,6 @@ function handleStreamEvent(payload) {
         note.textContent = payload.message;
         live.bubble.append(note);
       }
-      els.status.classList.add('error');
       break;
     case 'done':
       if (payload.stopped) {
@@ -614,10 +686,15 @@ function handleStreamEvent(payload) {
 }
 
 async function sendTurn(text) {
+  if (state.activeId === null) {
+    els.main.classList.remove('empty-mode');
+    els.empty.hidden = true;
+    els.messages.hidden = false;
+    els.suggestions.hidden = true;
+  }
   appendUser(text);
   startAssistant();
   setBusy(true);
-  els.status.classList.remove('error');
   els.model.textContent = '';
 
   try {
@@ -639,7 +716,7 @@ async function sendTurn(text) {
 
     if (!response.ok || !response.body) {
       const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || `Request failed (${response.status}).`);
+      throw new Error(data.error || `Request failed (${response.status})`);
     }
 
     const reader = response.body.getReader();
@@ -651,7 +728,6 @@ async function sendTurn(text) {
       const {done, value} = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, {stream: true});
-
       let index;
       while ((index = buffer.indexOf('\n\n')) >= 0) {
         const raw = buffer.slice(0, index);
@@ -676,7 +752,6 @@ async function sendTurn(text) {
     note.className = 'note error';
     note.textContent = err.message;
     live.bubble?.append(note);
-    els.status.classList.add('error');
   } finally {
     if (live.timer) {
       clearTimeout(live.timer);
@@ -685,6 +760,7 @@ async function sendTurn(text) {
     renderLive();
     setBusy(false);
     loadState().catch(() => {});
+    if (state.expanded.has(state.workspace)) loadSessions(state.workspace);
   }
 }
 
@@ -714,6 +790,14 @@ els.input.addEventListener('keydown', (event) => {
   }
 });
 
+els.suggestions.addEventListener('click', (event) => {
+  const chip = event.target.closest('.chip');
+  if (!chip || state.busy) return;
+  const prompt = chip.dataset.prompt || chip.textContent;
+  els.input.value = prompt;
+  els.form.requestSubmit();
+});
+
 els.stop.addEventListener('click', async () => {
   if (!state.activeId) return;
   els.stop.disabled = true;
@@ -734,44 +818,54 @@ els.mode.addEventListener('change', () => {
   els.mode.classList.toggle('full', els.mode.value === 'full');
 });
 
-els.project.addEventListener('change', async () => {
-  state.workspace = els.project.value;
-  localStorage.setItem('thechambers-workspace', state.workspace);
-  els.workspace.textContent = state.workspace;
-  els.workspace.title = state.workspace;
-  await loadSessions();
-});
+els.project.addEventListener('change', () => setWorkspace(els.project.value));
 
-els.addProject.addEventListener('click', async () => {
+async function promptForProject() {
   const path = prompt('Folder to work in (full path on this machine):');
   if (!path) return;
   try {
-    const data = await api('/api/workspaces', {
-      method: 'POST',
-      body: JSON.stringify({path}),
-    });
-    state.workspace = data.path;
-    localStorage.setItem('thechambers-workspace', data.path);
+    const data = await api('/api/workspaces', {method: 'POST', body: JSON.stringify({path})});
     await loadProjects();
-    els.workspace.textContent = data.path;
-    els.workspace.title = data.path;
-    await loadSessions();
+    await setWorkspace(data.path);
+    await loadProjects();
   } catch (err) {
     alert(err.message);
   }
+}
+
+els.addProject.addEventListener('click', promptForProject);
+els.addProjectBar.addEventListener('click', promptForProject);
+
+els.searchToggle.addEventListener('click', () => {
+  els.searchWrap.hidden = !els.searchWrap.hidden;
+  if (!els.searchWrap.hidden) els.search.focus();
+  else {
+    els.search.value = '';
+    state.filter = '';
+    renderSidebar();
+  }
 });
 
-els.tabChats.addEventListener('click', () => setTab('chats'));
-els.tabSessions.addEventListener('click', () => setTab('sessions'));
+els.search.addEventListener('input', () => {
+  state.filter = els.search.value.trim();
+  renderSidebar();
+});
+
+els.tabSessions.addEventListener('click', async () => {
+  state.expanded.add(state.workspace);
+  await loadSessions(state.workspace);
+  els.projectList.scrollIntoView({block: 'nearest'});
+});
 
 els.newChat.addEventListener('click', newChat);
+els.newChatTop.addEventListener('click', newChat);
 
 els.logout.addEventListener('click', async () => {
   await fetch('/api/logout', {method: 'POST'}).catch(() => {});
   location.href = '/login';
 });
 
-els.messages.addEventListener('scroll', () => {
+els.scroll.addEventListener('scroll', () => {
   live.pinned = nearBottom();
 });
 
@@ -788,9 +882,17 @@ function closeNav() {
 els.menu.addEventListener('click', openNav);
 els.scrim.addEventListener('click', closeNav);
 
+els.sidebarToggle.addEventListener('click', () => {
+  if (window.matchMedia('(max-width: 900px)').matches) {
+    els.app.classList.contains('nav-open') ? closeNav() : openNav();
+    return;
+  }
+  els.app.classList.toggle('side-collapsed');
+});
+
 async function boot() {
-  const saved = localStorage.getItem('thechambers-mode');
-  if (saved === 'full') {
+  const savedMode = localStorage.getItem('thechambers-mode');
+  if (savedMode === 'full') {
     els.mode.value = 'full';
     els.mode.classList.add('full');
   }
@@ -802,6 +904,9 @@ async function boot() {
     els.convMeta.textContent = err.message;
     return;
   }
+
+  state.expanded.add(state.workspace);
+  await loadSessions(state.workspace);
 
   if (state.conversations.length) {
     await openConversation(state.conversations[0].id);
