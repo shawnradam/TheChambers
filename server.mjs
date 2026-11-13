@@ -637,6 +637,54 @@ function runProcess(file, args, {cwd, timeout = 15000, max = 262144} = {}) {
 let modelsCache = null;
 let modelsAt = 0;
 
+const SKILL_ROOTS = [
+  path.join(os.homedir(), '.commandcode', 'skills'),
+  path.join(os.homedir(), '.agents', 'skills'),
+];
+
+function skillMeta(file, fallback) {
+  const meta = {name: fallback, description: ''};
+  try {
+    const text = fs.readFileSync(file, 'utf8').slice(0, 8192);
+    const front = text.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+    if (front) {
+      const name = front[1].match(/^name:\s*(.+)$/m);
+      const desc = front[1].match(/^description:\s*(.+)$/m);
+      if (name) meta.name = name[1].trim().replace(/^["']|["']$/g, '');
+      if (desc) meta.description = desc[1].trim().replace(/^["']|["']$/g, '').slice(0, 240);
+    }
+  } catch {
+    /* a malformed SKILL.md still counts as a skill by folder name */
+  }
+  return meta;
+}
+
+function listSkills() {
+  const found = new Map();
+  const walk = (dir, depth) => {
+    if (depth > 4) return;
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, {withFileTypes: true});
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const full = path.join(dir, entry.name);
+      const skillFile = path.join(full, 'SKILL.md');
+      if (fs.existsSync(skillFile)) {
+        const meta = skillMeta(skillFile, entry.name);
+        if (!found.has(meta.name)) found.set(meta.name, {...meta, path: skillFile});
+      } else {
+        walk(full, depth + 1);
+      }
+    }
+  };
+  for (const root of SKILL_ROOTS) walk(root, 0);
+  return [...found.values()].sort((a, b) => a.name.localeCompare(b.name)).slice(0, 200);
+}
+
 function parseModels(text) {
   const groups = [];
   let group = null;
@@ -1807,6 +1855,10 @@ const handler = async (req, res) => {
       } catch (err) {
         return json(res, 200, {groups: [], defaultModel: null, error: err.message});
       }
+    }
+
+    if (req.method === 'GET' && pathname === '/api/skills') {
+      return json(res, 200, {skills: listSkills()});
     }
 
     res.writeHead(404, {'Content-Type': 'application/json; charset=utf-8'});
