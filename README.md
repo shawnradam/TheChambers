@@ -1,5 +1,20 @@
 # TheChambers
 
+> ### Unofficial — read this first
+>
+> TheChambers is a **personal project**, not an official terminal or client for
+> [Command Code](https://commandcode.ai). It is **not affiliated with, endorsed by, or supported
+> by** Command Code or prior art.
+>
+> Command Code already has its own remote control, and it runs on Telegram. **I don't use
+> Telegram, and this project has nothing to do with that one.** I built TheChambers for my own
+> projects, on my own machines, and I am sharing it in case it saves someone else the same work.
+> Please don't report problems with it to the Command Code team.
+>
+> The interface is **inspired by [prior art](https://github.com)**, which
+> I love using every day — the layout, the panels and the interaction model are modelled on it.
+> All credit for that design is theirs. This is a reimplementation for Command Code, not a fork.
+
 Formally known as cmdc. The workflow is adapted from prior art, rebuilt from scratch for
 [Command Code](https://commandcode.ai).
 
@@ -120,6 +135,34 @@ $env:THECHAMBERS_HOST='127.0.0.1'; node server.mjs   # PowerShell
 ```
 
 The server prints the address it bound to. The launcher is only convenience around this.
+
+## The command
+
+`bin/thechambers.mjs` is a small Unix-shaped CLI, identical on all three platforms. Either run it
+with `node bin/thechambers.mjs …`, or make it global once and use it directly:
+
+```bash
+npm link            # or: npm i -g .
+thechambers help
+```
+
+```
+thechambers [start] [--port 3002] [--host <addr>] [--workspace <dir>] [--local]
+thechambers status
+thechambers stop
+thechambers doctor
+thechambers version
+```
+
+| Command | What it does |
+| --- | --- |
+| `thechambers` | starts the server (same as `start`), prints the banner, addresses and password path |
+| `status` | asks `/health`: version, commit, workspace, turns in flight, phone and desktop URLs |
+| `stop` | finds the process listening on the port (`netstat` on Windows, `lsof` elsewhere) and stops it |
+| `doctor` | checks Node ≥ 22, the Command Code CLI, Tailscale, the password file, the secret, and the port |
+| `version` | prints the version and short commit |
+
+Exit codes are ordinary: `0` ok, `1` problem, `2` bad usage, so it composes in scripts.
 
 ## Reach it from your phone
 
@@ -378,10 +421,23 @@ tools/verify.mjs         End-to-end check
 
 - One turn at a time per conversation (the CLI has no multiplexed session).
 - The terminal cannot be pushed a message; `/resume` is the handoff.
-- No file browser or diff viewer yet — tool output is shown inside the chat.
 - Tailscale is assumed; there is no TLS of its own, which is why the server refuses to bind a
   public interface by default.
+- The terminal panel and Full access can run arbitrary commands. The password is the boundary.
+
+## Contributing
+
+Issues and pull requests are welcome — it is one person's project, so the useful shape is: open an
+issue describing the behaviour, then a small focused PR. See [CONTRIBUTING.md](./CONTRIBUTING.md)
+for the layout of the code, how to run it against a scratch port, and the two rules that keep the
+design honest (no new dependencies; the transcript is the only source of history).
 
 ## License
 
-MIT. Command Code itself is a separate product with its own terms; this project only drives it.
+TheChambers is free software under the **GNU General Public License v3.0 or later** — see
+[LICENSE](./LICENSE). You can use it, study it, change it and share it; if you distribute a modified
+version, it stays under the same licence. Copyright © 2026 Shawn Radam.
+
+This project is not affiliated with Command Code or prior art. Command Code is a separate product
+with its own terms; this project only drives the CLI you already installed and signed in. The
+interface design is inspired by prior art, and credit for it belongs there.

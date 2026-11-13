@@ -1,14 +1,30 @@
 {
   "name": "thechambers",
   "version": "1.2.0",
-  "description": "Command Code from your phone, over Tailscale.",
+  "description": "Command Code from your phone, over Tailscale. An unofficial, personal project inspired by prior art.",
   "type": "module",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
+  "author": "Shawn Radam",
+  "homepage": "https://github.com/shawnradam/TheChambers",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shawnradam/TheChambers.git"
+  },
+  "keywords": [
+    "command-code",
+    "coding-agent",
+    "tailscale",
+    "remote",
+    "phone",
+    "prior art"
+  ],
   "bin": {
     "thechambers": "bin/thechambers.mjs"
   },
   "scripts": {
     "start": "node bin/thechambers.mjs",
+    "status": "node bin/thechambers.mjs status",
+    "doctor": "node bin/thechambers.mjs doctor",
     "verify": "node tools/verify.mjs"
   },
   "engines": {
@@ -19,6 +35,7 @@
     "public",
     "server.mjs",
     "tools",
+    "LICENSE",
     "README.md"
   ]
 }

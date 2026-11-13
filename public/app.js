@@ -2721,8 +2721,13 @@ function openSettings() {
         } else if (name === 'about') {
           pane.innerHTML = `
             <h3>TheChambers</h3>
-            <p>Command Code from your phone, over Tailscale. The interface follows prior art; the agent is Command Code.</p>
+            <p>Command Code from your phone, over Tailscale.</p>
+            <p class="meta">Unofficial personal project. Not affiliated with or supported by Command
+            Code, and it has nothing to do with their Telegram remote control — I don't use
+            Telegram. The interface is inspired by prior art; credit for the design is theirs.</p>
             <div class="kv"><span>Version</span><b>${esc(state.health ? state.health.version : '—')}</b></div>
+            <div class="kv"><span>Licence</span><b>GPL-3.0-or-later</b></div>
+            <div class="kv"><span>Source</span><b>github.com/shawnradam/TheChambers</b></div>
             <div class="kv"><span>Workspace</span><b>${esc(state.workspace)}</b></div>
             <div class="kv"><span>CLI</span><b>${esc((state.health && state.health.cliEntry) || 'auto-detected')}</b></div>
             <h3>Session</h3>

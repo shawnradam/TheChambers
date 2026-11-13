@@ -1235,6 +1235,7 @@ const handler = async (req, res) => {
         ok: true,
         version: VERSION,
         commit: repo.short,
+        host: HOST,
         workspace: WORKSPACE,
         running: running.size,
       });
