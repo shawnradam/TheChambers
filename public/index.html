@@ -6,14 +6,19 @@
     <meta name="theme-color" content="#171515" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>TheChambers</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/logo-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/logo-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div id="app">
       <aside id="sidebar">
         <div class="side-top">
-          <button id="sidebar-toggle" class="icon-btn" type="button" title="Toggle sidebar">▤</button>
+          <img class="brand-logo" src="/logo-64.png" alt="TheChambers" />
           <button id="new-chat" class="new-session" type="button"><span class="plus">＋</span> New session</button>
+          <button id="sidebar-toggle" class="icon-btn" type="button" title="Toggle sidebar">▤</button>
         </div>
 
         <div class="side-tools">
@@ -52,6 +57,7 @@
       <main id="main">
         <header id="topbar">
           <button id="menu" class="icon-btn" type="button" aria-label="Sessions">☰</button>
+          <img class="tb-logo" src="/logo-64.png" alt="" />
           <div class="tb-title">
             <h1 id="conv-title">New session</h1>
             <div id="conv-meta" class="meta"></div>

@@ -879,7 +879,13 @@ function closeNav() {
   els.scrim.hidden = true;
 }
 
-els.menu.addEventListener('click', openNav);
+els.menu.addEventListener('click', () => {
+  if (els.app.classList.contains('side-collapsed')) {
+    els.app.classList.remove('side-collapsed');
+    return;
+  }
+  openNav();
+});
 els.scrim.addEventListener('click', closeNav);
 
 els.sidebarToggle.addEventListener('click', () => {

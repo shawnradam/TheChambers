@@ -782,6 +782,13 @@ const STATIC = {
   '/app.js': ['public/app.js', 'text/javascript; charset=utf-8'],
   '/login.js': ['public/login.js', 'text/javascript; charset=utf-8'],
   '/styles.css': ['public/styles.css', 'text/css; charset=utf-8'],
+  '/logo-32.png': ['public/logo-32.png', 'image/png'],
+  '/logo-64.png': ['public/logo-64.png', 'image/png'],
+  '/logo-192.png': ['public/logo-192.png', 'image/png'],
+  '/logo-512.png': ['public/logo-512.png', 'image/png'],
+  '/apple-touch-icon.png': ['public/apple-touch-icon.png', 'image/png'],
+  '/favicon.ico': ['public/logo-32.png', 'image/png'],
+  '/site.webmanifest': ['public/site.webmanifest', 'application/manifest+json; charset=utf-8'],
 };
 
 function serveStatic(res, relPath, type, status = 200) {
@@ -815,11 +822,6 @@ const handler = async (req, res) => {
   try {
     if (req.method === 'GET' && pathname === '/health') {
       return json(res, 200, {ok: true, version: VERSION, workspace: WORKSPACE, running: running.size});
-    }
-
-    if (req.method === 'GET' && pathname === '/favicon.ico') {
-      res.writeHead(204);
-      return res.end();
     }
 
     if (req.method === 'GET' && (pathname === '/login' || pathname === '/login.html')) {

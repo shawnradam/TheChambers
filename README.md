@@ -261,6 +261,9 @@ server.mjs               HTTP server: auth, session catalog, transcripts, SSE, s
 public/index.html        Chat page
 public/app.js            Streaming client, live polling, markdown, tool chips
 public/styles.css        Dark, phone-first styles
+public/logo-*.png        Logo (32/64/192/512) with the white background knocked out
+public/apple-touch-icon.png
+public/site.webmanifest  PWA manifest for Add to Home Screen
 public/login.html        Password gate
 public/login.js          Login form
 start-thechambers.ps1    Windows launcher (Tailscale address, port check, password bootstrap)
