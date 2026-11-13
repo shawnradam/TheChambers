@@ -11,17 +11,23 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body class="login-body">
-    <form id="login" class="login-card">
-      <img class="login-logo" src="/logo-192.png" alt="TheChambers" />
-      <h1>TheChambers</h1>
-      <p class="meta">Command Code, from this device.</p>
-      <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
-      <label class="check">
+    <form id="login" class="login-box">
+      <h1>Unlock TheChambers</h1>
+      <p>This session is password-protected.</p>
+      <div class="login-row">
+        <label class="login-input">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+          <input id="password" type="password" placeholder="Enter password" autocomplete="current-password" required />
+        </label>
+        <button class="login-submit" type="submit" aria-label="Unlock">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+        </button>
+      </div>
+      <label class="login-trust">
         <input id="trust" type="checkbox" checked />
         Trust this device
       </label>
-      <button class="primary" type="submit">Unlock</button>
-      <p id="error" class="error" role="alert"></p>
+      <p id="error" class="login-error" role="alert"></p>
     </form>
     <script src="/login.js"></script>
   </body>

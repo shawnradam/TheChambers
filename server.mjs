@@ -13,7 +13,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {spawn, execFileSync} from 'node:child_process';
+import {spawn, execFile, execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +22,7 @@ const CONFIG_DIR = path.join(os.homedir(), '.config', 'thechambers');
 const PASSWORD_FILE = path.join(CONFIG_DIR, 'ui-password.txt');
 const SECRET_FILE = path.join(CONFIG_DIR, 'secret.txt');
 const CONVERSATIONS_FILE = path.join(CONFIG_DIR, 'conversations.json');
+const NOTES_FILE = path.join(CONFIG_DIR, 'notes.json');
 
 const env = (name, legacy, fallback) => process.env[name] || (legacy ? process.env[legacy] : undefined) || fallback;
 
@@ -62,7 +63,7 @@ const COOKIE_NAME = 'thechambers';
 // State
 // ---------------------------------------------------------------------------
 
-let state = {conversations: [], workspaces: []};
+let state = {conversations: [], workspaces: [], notes: []};
 try {
   if (fs.existsSync(CONVERSATIONS_FILE)) {
     const parsed = JSON.parse(fs.readFileSync(CONVERSATIONS_FILE, 'utf8'));
@@ -70,6 +71,7 @@ try {
       state = {
         conversations: parsed.conversations,
         workspaces: Array.isArray(parsed.workspaces) ? parsed.workspaces : [],
+        notes: Array.isArray(parsed.notes) ? parsed.notes : [],
       };
     }
   }
@@ -222,6 +224,7 @@ function publicConversation(conv) {
     title: conv.title,
     sessionId: conv.sessionId || null,
     workspace: conv.workspace || WORKSPACE,
+    model: conv.model || null,
     createdAt: conv.createdAt,
     updatedAt: conv.updatedAt,
     running: running.has(conv.id),
@@ -287,6 +290,90 @@ function workspaceFromInput(value) {
   } catch {
     return null;
   }
+}
+
+function workspaceOr(value) {
+  return workspaceFromInput(value) || WORKSPACE;
+}
+
+function isInside(root, target) {
+  const rel = path.relative(root, target);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+// Small promise wrapper around execFile with a hard timeout and output cap. The panels
+// (Git, Files, Terminal) all use it, so they share one place where output can be bounded.
+function runProcess(file, args, {cwd, timeout = 15000, max = 262144} = {}) {
+  return new Promise((resolve) => {
+    execFile(
+      file,
+      args,
+      {cwd, timeout, maxBuffer: max, windowsHide: true, encoding: 'utf8'},
+      (error, stdout, stderr) => {
+        resolve({
+          ok: !error,
+          code: error && typeof error.code === 'number' ? error.code : error ? 1 : 0,
+          signal: error && error.signal ? error.signal : null,
+          stdout: stdout || '',
+          stderr: stderr || '',
+          error: error && !stdout && !stderr ? error.message : null,
+        });
+      },
+    );
+  });
+}
+
+let modelsCache = null;
+let modelsAt = 0;
+
+function parseModels(text) {
+  const groups = [];
+  let group = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line.trim()) continue;
+    if (/^(Available models|Pass the full id|cmdc |Docs:|Decision models)/.test(line)) continue;
+
+    // Model rows are `id  description` at column 0. Group headers are a bare word at column 0.
+    const match = line.match(/^(\S+)\s{2,}(.+)$/);
+    if (match) {
+      if (!group) {
+        group = {name: 'Models', models: []};
+        groups.push(group);
+      }
+      const isDefault = /\(default\)/.test(match[2]);
+      group.models.push({
+        id: match[1],
+        note: match[2].replace(/\s*\(default\)\s*/, '').trim(),
+        default: isDefault,
+      });
+      continue;
+    }
+
+    if (/^\S/.test(line) && !/^["']/.test(line)) {
+      const name = line.trim();
+      if (name.length > 40) continue;
+      group = {name, models: []};
+      groups.push(group);
+    }
+  }
+  return groups.filter((item) => item.models.length);
+}
+
+async function listModels() {
+  if (modelsCache && Date.now() - modelsAt < 6 * 60 * 60 * 1000) return modelsCache;
+  const file = CLI_ENTRY ? process.execPath : process.platform === 'win32' ? 'cmdc.cmd' : 'cmdc';
+  const args = CLI_ENTRY ? [CLI_ENTRY, '--list-models'] : ['--list-models'];
+  const result = await runProcess(file, args, {timeout: 20000});
+  const text = result.stdout || result.stderr;
+  const groups = parseModels(text);
+  const flat = groups.flatMap((group) => group.models);
+  modelsCache = {
+    groups,
+    defaultModel: (flat.find((model) => model.default) || flat[0] || {}).id || null,
+  };
+  modelsAt = Date.now();
+  return modelsCache;
 }
 
 const headerCache = new Map(); // transcript file -> {mtimeMs, header, meta}
@@ -648,7 +735,10 @@ async function startTurn(req, res) {
   if (!text) return json(res, 400, {error: 'Message is empty.'});
   if (text.length > 40000) return json(res, 400, {error: 'Message is over 40,000 characters.'});
 
-  const mode = body.mode === 'full' ? 'full' : 'read-only';
+  const mode =
+    body.mode === 'full' ? 'full' : body.mode === 'plan' ? 'plan' : body.mode === 'accept' ? 'accept' : 'read-only';
+  const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim().slice(0, 120) : null;
+  const effort = typeof body.effort === 'string' && body.effort.trim() ? body.effort.trim().slice(0, 20) : null;
 
   let conv = body.conversationId ? findConversation(body.conversationId) : null;
   if (!conv) {
@@ -660,6 +750,7 @@ async function startTurn(req, res) {
   if (running.has(conv.id)) return json(res, 409, {error: 'This conversation is still running.'});
 
   conv.updatedAt = Date.now();
+  if (model) conv.model = model;
   if (!conv.title || conv.title === 'New conversation') {
     conv.title = text.replace(/\s+/g, ' ').slice(0, 60);
   }
@@ -667,7 +758,11 @@ async function startTurn(req, res) {
 
   const args = ['-p', '--output-format', 'json', '--max-turns', MAX_TURNS, '--skip-onboarding'];
   if (conv.sessionId) args.push('--resume', conv.sessionId);
+  if (model) args.push('--model', model);
+  if (effort) args.push('--effort', effort);
   if (mode === 'full') args.push('--yolo');
+  if (mode === 'accept') args.push('--accept-edits');
+  if (mode === 'plan') args.push('--plan');
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -801,7 +896,7 @@ function serveStatic(res, relPath, type, status = 200) {
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
       'Content-Security-Policy':
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src http: https:; base-uri 'none'; form-action 'none'",
     });
     res.end(body);
   } catch (err) {
@@ -993,6 +1088,19 @@ const handler = async (req, res) => {
       });
     }
 
+    if (req.method === 'PATCH' && pathname.startsWith('/api/conversations/')) {
+      const id = pathname.slice('/api/conversations/'.length);
+      const conv = findConversation(id);
+      if (!conv) return json(res, 404, {error: 'No such conversation.'});
+      const body = await readJson(req).catch(() => ({}));
+      if (typeof body.title === 'string' && body.title.trim()) {
+        conv.title = body.title.trim().slice(0, 100);
+        conv.updatedAt = Date.now();
+        persist();
+      }
+      return json(res, 200, publicConversation(conv));
+    }
+
     if (req.method === 'DELETE' && pathname.startsWith('/api/conversations/')) {
       const id = pathname.slice('/api/conversations/'.length);
       const record = running.get(id);
@@ -1035,6 +1143,247 @@ const handler = async (req, res) => {
       record.wasStopped = true;
       stopChild(record.child);
       return json(res, 200, {ok: true});
+    }
+
+    // -----------------------------------------------------------------------
+    // Workspace surfaces: files, search, git, terminal, notes, models
+    // -----------------------------------------------------------------------
+
+    if (req.method === 'GET' && pathname === '/api/files') {
+      const workspace = workspaceOr(url.searchParams.get('workspace'));
+      const target = path.resolve(workspace, url.searchParams.get('path') || '');
+      if (!isInside(workspace, target)) {
+        return json(res, 400, {error: 'That path is outside the project.'});
+      }
+      let entries;
+      try {
+        entries = fs
+          .readdirSync(target, {withFileTypes: true})
+          .filter((entry) => entry.name !== '.git' && entry.name !== 'node_modules')
+          .map((entry) => {
+            const full = path.join(target, entry.name);
+            let size = 0;
+            let mtime = 0;
+            try {
+              const stat = fs.statSync(full);
+              size = stat.size;
+              mtime = stat.mtimeMs;
+            } catch {
+              /* a broken symlink still shows, just without size */
+            }
+            return {name: entry.name, path: full, dir: entry.isDirectory(), size, mtime};
+          })
+          .sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
+      } catch {
+        return json(res, 404, {error: 'Cannot read that folder.'});
+      }
+      return json(res, 200, {workspace, path: target, entries});
+    }
+
+    if (req.method === 'GET' && pathname === '/api/search') {
+      const workspace = workspaceOr(url.searchParams.get('workspace'));
+      const query = (url.searchParams.get('q') || '').toLowerCase().slice(0, 100);
+      if (!query) return json(res, 200, {entries: []});
+      const entries = [];
+      const walk = (dir, depth) => {
+        if (entries.length >= 200 || depth > 8) return;
+        let list = [];
+        try {
+          list = fs.readdirSync(dir, {withFileTypes: true});
+        } catch {
+          return;
+        }
+        for (const entry of list) {
+          if (entries.length >= 200) return;
+          if (entry.name === 'node_modules' || entry.name === '.git') continue;
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full, depth + 1);
+          else if (entry.name.toLowerCase().includes(query)) entries.push({name: entry.name, path: full, dir: false});
+        }
+      };
+      walk(workspace, 0);
+      return json(res, 200, {entries});
+    }
+
+    if (req.method === 'GET' && pathname === '/api/file') {
+      const workspace = workspaceOr(url.searchParams.get('workspace'));
+      const target = path.resolve(workspace, url.searchParams.get('path') || '');
+      if (!isInside(workspace, target)) return json(res, 400, {error: 'That path is outside the project.'});
+      try {
+        const stat = fs.statSync(target);
+        if (!stat.isFile()) return json(res, 400, {error: 'That is not a file.'});
+        const cap = 512 * 1024;
+        const start = Math.max(0, stat.size - cap);
+        const fd = fs.openSync(target, 'r');
+        const buffer = Buffer.alloc(stat.size - start);
+        fs.readSync(fd, buffer, 0, buffer.length, start);
+        fs.closeSync(fd);
+        const binary = buffer.includes(0);
+        return json(res, 200, {
+          path: target,
+          size: stat.size,
+          binary,
+          truncated: start > 0,
+          text: binary ? null : buffer.toString('utf8'),
+        });
+      } catch {
+        return json(res, 404, {error: 'Cannot read that file.'});
+      }
+    }
+
+    if (req.method === 'GET' && pathname === '/api/git') {
+      const workspace = workspaceOr(url.searchParams.get('workspace'));
+      if (!fs.existsSync(path.join(workspace, '.git'))) {
+        return json(res, 200, {isRepo: false, workspace});
+      }
+      const branch = await runProcess('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {cwd: workspace});
+      const status = await runProcess('git', ['status', '--porcelain=v1', '-z'], {cwd: workspace});
+      const parts = status.stdout.split('\0').filter(Boolean);
+      const files = [];
+      for (let i = 0; i < parts.length; i += 1) {
+        const entry = parts[i];
+        if (entry.length < 4) continue;
+        const code = entry.slice(0, 2).trim() || '?';
+        files.push({status: code, path: entry.slice(3)});
+        if (code.startsWith('R') || code.startsWith('C')) i += 1;
+      }
+      return json(res, 200, {
+        isRepo: true,
+        workspace,
+        branch: branch.ok ? branch.stdout.trim() : '',
+        files,
+        clean: files.length === 0,
+      });
+    }
+
+    if (req.method === 'POST' && pathname === '/api/git/init') {
+      const body = await readJson(req).catch(() => ({}));
+      const workspace = workspaceOr(body.workspace);
+      const result = await runProcess('git', ['init'], {cwd: workspace});
+      return json(res, result.ok ? 200 : 500, {
+        ok: result.ok,
+        output: `${result.stdout}${result.stderr}`.trim(),
+      });
+    }
+
+    if (req.method === 'GET' && pathname === '/api/diff') {
+      const workspace = workspaceOr(url.searchParams.get('workspace'));
+      const file = url.searchParams.get('path') || '';
+      const target = file ? path.resolve(workspace, file) : null;
+      if (target && !isInside(workspace, target)) return json(res, 400, {error: 'Outside the project.'});
+      const args = ['diff', '--no-color'];
+      if (file) args.push('--', file);
+      const result = await runProcess('git', args, {cwd: workspace, max: 1024 * 1024});
+      let diff = result.stdout || '';
+      // An untracked file has no diff; show its contents as an addition instead.
+      if (!diff && target && fs.existsSync(target) && fs.statSync(target).isFile()) {
+        const text = fs.readFileSync(target, 'utf8');
+        diff = text
+          .split('\n')
+          .map((line) => `+${line}`)
+          .join('\n');
+      }
+      return json(res, 200, {path: file || null, diff});
+    }
+
+    if (req.method === 'GET' && pathname === '/api/walkthrough') {
+      const workspace = workspaceOr(url.searchParams.get('workspace'));
+      const result = await runProcess(
+        'git',
+        ['log', '--no-color', '--date=short', '--pretty=format:%h%x09%ad%x09%s', '-n', '30'],
+        {cwd: workspace},
+      );
+      const commits = result.ok
+        ? result.stdout
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => {
+              const [hash, date, ...rest] = line.split('\t');
+              return {hash, date, subject: rest.join('\t')};
+            })
+        : [];
+      return json(res, 200, {isRepo: Boolean(commits.length), commits});
+    }
+
+    if (req.method === 'POST' && pathname === '/api/exec') {
+      const origin = req.headers.origin;
+      try {
+        if (origin && new URL(origin).host !== req.headers.host) {
+          return json(res, 403, {error: 'Cross-origin request refused.'});
+        }
+      } catch {
+        return json(res, 403, {error: 'Cross-origin request refused.'});
+      }
+      const body = await readJson(req).catch(() => ({}));
+      const command = typeof body.command === 'string' ? body.command.trim() : '';
+      if (!command) return json(res, 400, {error: 'No command.'});
+      if (command.length > 4000) return json(res, 400, {error: 'Command is too long.'});
+      const workspace = workspaceOr(body.workspace);
+      const shell = process.platform === 'win32' ? 'powershell.exe' : '/bin/sh';
+      const args =
+        process.platform === 'win32'
+          ? ['-NoProfile', '-NonInteractive', '-Command', command]
+          : ['-lc', command];
+      const started = Date.now();
+      const result = await runProcess(shell, args, {cwd: workspace, timeout: 120000, max: 512 * 1024});
+      return json(res, 200, {
+        output: `${result.stdout}${result.stderr}`.slice(-200000),
+        code: result.code,
+        ok: result.ok,
+        ms: Date.now() - started,
+      });
+    }
+
+    if (pathname === '/api/notes') {
+      if (req.method === 'GET') {
+        const workspace = workspaceOr(url.searchParams.get('workspace'));
+        const wanted = normalisePath(workspace);
+        const notes = state.notes.filter((note) => normalisePath(note.workspace) === wanted);
+        return json(res, 200, {notes});
+      }
+      if (req.method === 'POST') {
+        const body = await readJson(req).catch(() => ({}));
+        const text = typeof body.text === 'string' ? body.text.trim().slice(0, 4000) : '';
+        if (!text) return json(res, 400, {error: 'Write something first.'});
+        const tab = ['notes', 'todo', 'plans'].includes(body.tab) ? body.tab : 'notes';
+        const note = {
+          id: crypto.randomUUID(),
+          workspace: workspaceOr(body.workspace),
+          tab,
+          text,
+          done: false,
+          createdAt: Date.now(),
+        };
+        state.notes.unshift(note);
+        persist();
+        return json(res, 201, note);
+      }
+    }
+
+    if (pathname.startsWith('/api/notes/')) {
+      const id = pathname.slice('/api/notes/'.length);
+      const note = state.notes.find((item) => item.id === id);
+      if (!note) return json(res, 404, {error: 'No such note.'});
+      if (req.method === 'PATCH') {
+        const body = await readJson(req).catch(() => ({}));
+        if (typeof body.text === 'string') note.text = body.text.trim().slice(0, 4000);
+        if (typeof body.done === 'boolean') note.done = body.done;
+        persist();
+        return json(res, 200, note);
+      }
+      if (req.method === 'DELETE') {
+        state.notes = state.notes.filter((item) => item.id !== id);
+        persist();
+        return json(res, 200, {ok: true});
+      }
+    }
+
+    if (req.method === 'GET' && pathname === '/api/models') {
+      try {
+        return json(res, 200, await listModels());
+      } catch (err) {
+        return json(res, 200, {groups: [], defaultModel: null, error: err.message});
+      }
     }
 
     res.writeHead(404, {'Content-Type': 'application/json; charset=utf-8'});
