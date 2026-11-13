@@ -442,17 +442,62 @@ function noteLoginFailure(ip) {
 // The CLI is a .cmd shim on Windows, which Node refuses to spawn without a shell. Running the
 // bundled entry point through this same node binary avoids the shell entirely; the prompt goes
 // in on stdin so no user text ever reaches an argument list.
+// Where the Command Code CLI lives. npm's layout differs per platform, so ask npm first and keep
+// a list of known prefixes as a fallback: Homebrew on Apple silicon, Intel Macs, npm's own
+// user-level prefix, nvm, Volta, and the Windows roaming prefix.
+function npmGlobalRoot() {
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  try {
+    return execFileSync(npm, ['root', '-g'], {
+      encoding: 'utf8',
+      timeout: 15000,
+      windowsHide: true,
+      shell: process.platform === 'win32',
+    })
+      .split(/\r?\n/)[0]
+      .trim();
+  } catch {
+    return null;
+  }
+}
+
 function resolveCliEntry() {
   if (process.env.CMDC_ENTRY) return process.env.CMDC_ENTRY;
-  const candidates = [
-    path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'command-code', 'dist', 'index.mjs'),
-    path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'node_modules', 'command-code', 'dist', 'index.mjs'),
-    '/usr/local/lib/node_modules/command-code/dist/index.mjs',
-    '/usr/lib/node_modules/command-code/dist/index.mjs',
+
+  const suffixes = [
+    path.join('command-code', 'dist', 'index.mjs'),
+    path.join('@commandcode', 'cli', 'dist', 'index.mjs'),
   ];
-  for (const candidate of candidates) {
-    if (candidate && fs.existsSync(candidate)) return candidate;
+  const roots = new Set();
+  const globalRoot = npmGlobalRoot();
+  if (globalRoot) roots.add(globalRoot);
+  roots.add(path.join(process.env.APPDATA || '', 'npm', 'node_modules'));
+  roots.add(path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'node_modules'));
+  roots.add('/opt/homebrew/lib/node_modules');
+  roots.add('/usr/local/lib/node_modules');
+  roots.add('/usr/lib/node_modules');
+  roots.add(path.join(os.homedir(), '.npm-global', 'lib', 'node_modules'));
+  roots.add(path.join(os.homedir(), '.volta', 'tools', 'image', 'packages'));
+
+  for (const root of roots) {
+    if (!root) continue;
+    for (const suffix of suffixes) {
+      const candidate = path.join(root, suffix);
+      if (fs.existsSync(candidate)) return candidate;
+    }
   }
+
+  // nvm keeps one tree per Node version; take the newest that has the CLI.
+  try {
+    const nvm = path.join(os.homedir(), '.nvm', 'versions', 'node');
+    for (const version of fs.readdirSync(nvm).sort().reverse()) {
+      const candidate = path.join(nvm, version, 'lib', 'node_modules', 'command-code', 'dist', 'index.mjs');
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } catch {
+    /* no nvm */
+  }
+
   return null;
 }
 
@@ -1753,16 +1798,35 @@ const handler = async (req, res) => {
   }
 };
 
+// Tailscale's CLI is on PATH on Windows and Linux; the macOS app bundle keeps it inside the
+// .app, so try both spellings before giving up on the tailnet address.
+const TAILSCALE_BINARIES = [
+  'tailscale',
+  '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+  'C:\\Program Files\\Tailscale\\tailscale.exe',
+  'C:\\Program Files (x86)\\Tailscale\\tailscale.exe',
+];
+
+function tailscaleIp() {
+  for (const binary of TAILSCALE_BINARIES) {
+    try {
+      const out = execFileSync(binary, ['ip', '-4'], {
+        encoding: 'utf8',
+        timeout: 5000,
+        windowsHide: true,
+      });
+      const ip = out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0];
+      if (ip) return ip;
+    } catch {
+      /* try the next location */
+    }
+  }
+  return null;
+}
+
 function resolveHost() {
   if (process.env.THECHAMBERS_HOST) return process.env.THECHAMBERS_HOST;
-  try {
-    const out = execFileSync('tailscale', ['ip', '-4'], {encoding: 'utf8', timeout: 5000});
-    const ip = out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0];
-    if (ip) return ip;
-  } catch {
-    /* Tailscale not installed or not up; fall through to loopback. */
-  }
-  return '127.0.0.1';
+  return tailscaleIp() || '127.0.0.1';
 }
 
 const HOST = resolveHost();

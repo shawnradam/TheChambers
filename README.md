@@ -50,7 +50,22 @@ opening a port to the internet:
   cmd status
   ```
 - **Tailscale**, running on this machine and on the phone you will use
-- Windows 10/11, macOS, or Linux (the launchers are PowerShell; on macOS/Linux run `node server.mjs`)
+
+## Platform support
+
+| | Windows 10/11 | macOS | Linux |
+| --- | --- | --- | --- |
+| Server (`server.mjs`) | Yes — tested | Yes — expected | Yes — expected |
+| Portable launcher (`bin/thechambers.mjs`) | Yes — tested | Yes — expected | Yes — expected |
+| `start-thechambers.sh` | — | Yes | Yes |
+| `start-thechambers.ps1` / `.bat` / `.lnk` | Yes | — | — |
+| Tailscale discovery | `tailscale` on PATH, else Program Files | PATH, else `/Applications/Tailscale.app/…/Tailscale` | `tailscale` on PATH |
+| CLI discovery | `npm root -g`, `%APPDATA%\npm`, nvm, Volta | `npm root -g`, `/opt/homebrew/lib`, `/usr/local/lib`, nvm | `npm root -g`, `/usr/local/lib`, `/usr/lib`, `~/.npm-global`, nvm |
+| Config directory | `%USERPROFILE%\.config\thechambers` | `~/.config/thechambers` | `~/.config/thechambers` |
+
+Only Windows has been exercised end to end on this machine; macOS and Linux follow the same
+`bin/thechambers.mjs` path with per-platform binary lookup, so they should behave identically. If
+anything differs, `THECHAMBERS_HOST` and `CMDC_ENTRY` override discovery outright.
 
 ## Install
 
@@ -59,7 +74,8 @@ git clone https://github.com/shawnradam/TheChambers.git
 cd TheChambers
 ```
 
-There is no build step and no `npm install`.
+There is no build step and no `npm install` — the app is plain Node 22 plus static files. If you
+prefer, `npm start -- --local` works too, because `package.json` points at the same launcher.
 
 ### Windows
 
@@ -82,10 +98,28 @@ Run `.\create-shortcut.ps1` once to get `TheChambers.lnk` for one-click starting
 ### macOS / Linux
 
 ```bash
-THECHAMBERS_WORKSPACE="$HOME/code" node server.mjs
+./start-thechambers.sh                      # Tailscale address, port 3002
+./start-thechambers.sh --local              # loopback only
+./start-thechambers.sh --port 3003 --workspace ~/code
 ```
 
-The server prints the address it bound to. Use `THECHAMBERS_HOST=127.0.0.1` to keep it local.
+or call the launcher directly, which is identical on every platform:
+
+```bash
+node bin/thechambers.mjs --help
+node bin/thechambers.mjs
+```
+
+If the script is not executable after a clone, run `chmod +x start-thechambers.sh`.
+
+### Any platform, by hand
+
+```bash
+THECHAMBERS_HOST=127.0.0.1 node server.mjs     # Unix
+$env:THECHAMBERS_HOST='127.0.0.1'; node server.mjs   # PowerShell
+```
+
+The server prints the address it bound to. The launcher is only convenience around this.
 
 ## Reach it from your phone
 
@@ -316,7 +350,10 @@ public/site.webmanifest  PWA manifest for Add to Home Screen
 public/login.html        Password gate
 public/login.js          Login form
 start-thechambers.ps1    Windows launcher (Tailscale address, port check, password bootstrap)
+start-thechambers.sh     macOS/Linux launcher, same options
 start-thechambers.bat    Double-click wrapper
+bin/thechambers.mjs      Portable launcher used by every platform
+package.json             npm start / npm run verify
 create-shortcut.ps1      Creates TheChambers.lnk
 tools/verify.mjs         End-to-end check
 ```
