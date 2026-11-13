@@ -971,6 +971,60 @@ function appendUser(text) {
   scrollDown(true);
 }
 
+// What the composer says while the agent is working. One hundred short gerunds so a long turn
+// never feels frozen; the mark next to them is the C from the logo, spinning like the indicator
+// in Claude or ChatGPT.
+const THINKING_QUOTES = [
+  'Thinking', 'Pondering', 'Mulling', 'Noodling', 'Puzzling', 'Scheming', 'Churning', 'Brewing',
+  'Stewing', 'Cogitating', 'Ruminating', 'Deliberating', 'Contemplating', 'Considering', 'Weighing',
+  'Sifting', 'Sorting', 'Wrangling', 'Untangling', 'Tracing', 'Digging', 'Delving', 'Probing',
+  'Inspecting', 'Auditing', 'Reviewing', 'Reading', 'Skimming', 'Scanning', 'Parsing', 'Mapping',
+  'Charting', 'Sketching', 'Drafting', 'Outlining', 'Structuring', 'Wiring', 'Soldering', 'Assembling',
+  'Building', 'Forging', 'Casting', 'Shaping', 'Refining', 'Polishing', 'Honing', 'Tuning',
+  'Calibrating', 'Measuring', 'Testing', 'Checking', 'Verifying', 'Validating', 'Cross-checking',
+  'Comparing', 'Contrasting', 'Deciding', 'Choosing', 'Weighing options', 'Planning', 'Strategizing',
+  'Plotting', 'Sequencing', 'Scheduling', 'Prioritizing', 'Organizing', 'Tidying', 'Collecting',
+  'Gathering', 'Fetching', 'Loading', 'Warming up', 'Spinning up', 'Booting', 'Initializing',
+  'Preparing', 'Arranging', 'Composing', 'Writing', 'Rewriting', 'Editing', 'Trimming', 'Compressing',
+  'Expanding', 'Explaining', 'Summarizing', 'Distilling', 'Clarifying', 'Simplifying', 'Untangling knots',
+  'Connecting dots', 'Following threads', 'Chasing leads', 'Hunting', 'Searching', 'Exploring',
+  'Surveying', 'Reconnoitering', 'Double-checking', 'Finishing touches',
+];
+
+let thinkingTimer = null;
+let thinkingIndex = Math.floor(Math.random() * THINKING_QUOTES.length);
+
+function thinkingMarkup(text) {
+  return `<div class="thinking"><span class="c-spin" aria-hidden="true"><span>C</span></span><span class="thinking-text">${esc(text)}</span></div>`;
+}
+
+function startThinking(bubble) {
+  stopThinking();
+  const paint = () => {
+    if (!bubble || !bubble.isConnected) return stopThinking();
+    const phrase = THINKING_QUOTES[thinkingIndex % THINKING_QUOTES.length];
+    thinkingIndex += 1;
+    const holder = bubble.querySelector('.thinking-text');
+    if (!holder) {
+      bubble.innerHTML = thinkingMarkup(phrase);
+      return;
+    }
+    holder.textContent = phrase;
+    holder.classList.remove('swap');
+    void holder.offsetWidth; // restart the fade
+    holder.classList.add('swap');
+  };
+  paint();
+  thinkingTimer = setInterval(paint, 2000);
+}
+
+function stopThinking() {
+  if (thinkingTimer) {
+    clearInterval(thinkingTimer);
+    thinkingTimer = null;
+  }
+}
+
 function startAssistant() {
   const wrap = document.createElement('div');
   wrap.className = 'msg assistant';
@@ -978,7 +1032,6 @@ function startAssistant() {
   toolsEl.className = 'tools';
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.innerHTML = '<p class="pending">Starting Command Code<span class="dots">…</span></p>';
   wrap.append(toolsEl, bubble);
   els.thread.append(wrap);
   live.bubble = bubble;
@@ -987,6 +1040,7 @@ function startAssistant() {
   live.text = '';
   live.started = Date.now();
   live.pinned = true;
+  startThinking(bubble);
   scrollDown(true);
   return {wrap, bubble};
 }
@@ -1007,7 +1061,6 @@ function scheduleLiveRender() {
 
 function upsertTool(payload) {
   if (!live.toolsEl) return;
-  if (!live.text && live.bubble && live.bubble.querySelector('.pending')) live.bubble.textContent = '';
   let node = live.tools.get(payload.id);
   if (!node) {
     node = toolNode({name: payload.name, status: payload.status, input: payload.description});
@@ -1212,6 +1265,7 @@ function handleStreamEvent(payload) {
       state.activeId = payload.conversationId;
       break;
     case 'text':
+      if (!live.text) stopThinking();
       live.text += payload.d || '';
       scheduleLiveRender();
       break;
@@ -1223,6 +1277,7 @@ function handleStreamEvent(payload) {
       setModelLabel(live.model);
       break;
     case 'error':
+      stopThinking();
       if (live.bubble) {
         const note = document.createElement('p');
         note.className = 'note error';
@@ -1231,6 +1286,7 @@ function handleStreamEvent(payload) {
       }
       break;
     case 'done':
+      stopThinking();
       if (payload.usage) state.lastUsage = payload.usage;
       if (payload.sessionId) state.sessionId = payload.sessionId;
       break;
@@ -1322,11 +1378,13 @@ async function sendTurn(text) {
       wrap.append(note);
     }
   } finally {
+    stopThinking();
     if (live.timer) {
       clearTimeout(live.timer);
       live.timer = null;
     }
     renderLive();
+    if (!live.text && live.bubble) live.bubble.textContent = '';
     if (state.lastUsage) live.bubble && renderSessionCard();
     setBusy(false);
     loadState().catch(() => {});

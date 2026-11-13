@@ -971,6 +971,85 @@ a:hover {
   color: var(--muted);
 }
 
+/* The working mark: a ring that spins around the C, with a phrase that fades between words. */
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  user-select: none;
+}
+
+.c-spin {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.c-spin::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  border-top-color: var(--primary, #da702c);
+  border-right-color: var(--primary, #da702c);
+  animation: c-spin 1.05s linear infinite;
+}
+
+.c-spin span {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--primary-text, #e59a69);
+  animation: c-breathe 2.2s ease-in-out infinite;
+}
+
+.thinking-text.swap {
+  animation: phrase-swap 0.35s ease;
+}
+
+@keyframes c-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes c-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes phrase-swap {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .c-spin::before,
+  .c-spin span,
+  .thinking-text.swap {
+    animation: none;
+  }
+}
+
 .dots {
   animation: blink 1.2s infinite;
 }
