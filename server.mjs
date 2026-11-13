@@ -1275,6 +1275,23 @@ const handler = async (req, res) => {
       }
     }
 
+    // Defence in depth for every state-changing call, not just /api/turn and /api/exec: a
+    // same-site cookie already keeps cross-site POSTs out, but an explicit origin check means a
+    // browser-side mistake cannot turn into a write. Requests without an Origin (curl, scripts)
+    // are still allowed because they carry no ambient cookie.
+    if (req.method !== 'GET' && req.method !== 'HEAD' && pathname.startsWith('/api/')) {
+      const origin = req.headers.origin;
+      if (origin) {
+        let sameOrigin = false;
+        try {
+          sameOrigin = new URL(origin).host === req.headers.host;
+        } catch {
+          sameOrigin = false;
+        }
+        if (!sameOrigin) return json(res, 403, {error: 'Cross-origin request refused.'});
+      }
+    }
+
     if (req.method === 'GET' && pathname === '/') {
       return serveStatic(res, 'public/index.html', 'text/html; charset=utf-8');
     }
@@ -1831,6 +1848,13 @@ function resolveHost() {
 
 const HOST = resolveHost();
 const servers = [];
+
+if (HOST !== '127.0.0.1' && HOST !== tailscaleIp()) {
+  console.warn(
+    `[thechambers] WARNING: bound to ${HOST}, which is not a Tailscale address. ` +
+      'Traffic is not encrypted by Tailscale there, so the password crosses the network in the clear.',
+  );
+}
 
 // One listener on the Tailscale address (the phone) and, when that is not loopback, a second
 // on 127.0.0.1 so this desktop can use the same app at the same port. Neither listener is
