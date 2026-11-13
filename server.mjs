@@ -1812,6 +1812,13 @@ const handler = async (req, res) => {
     res.writeHead(404, {'Content-Type': 'application/json; charset=utf-8'});
     res.end(JSON.stringify({error: 'Not found.'}));
   } catch (err) {
+    // A body that isn't JSON is the caller's mistake, not a server fault: answer 400 and keep the
+    // log for things that actually went wrong inside the process.
+    if (err instanceof SyntaxError) {
+      if (!res.headersSent) return json(res, 400, {error: 'Malformed JSON body.'});
+      if (!res.writableEnded) res.end();
+      return;
+    }
     console.error('[thechambers] request failed', err);
     logLine(`request failed: ${err && err.stack ? err.stack : err}`);
     if (!res.headersSent) {
