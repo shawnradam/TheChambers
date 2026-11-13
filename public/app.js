@@ -1078,10 +1078,14 @@ const THINKING_QUOTES = [
 ];
 
 let thinkingTimer = null;
+let frameTimer = null;
 let thinkingIndex = Math.floor(Math.random() * THINKING_QUOTES.length);
 
+// The same working glyphs Command Code's own terminal uses (ink-spinner's "dots", 80ms a frame).
+const THINKING_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
 function thinkingMarkup(text) {
-  return `<div class="thinking" role="status"><span class="c-mark" aria-hidden="true"><span class="c-letter">C</span><span class="c-spark s1"></span></span><span class="thinking-text">${esc(text)}</span></div>`;
+  return `<div class="thinking" role="status"><span class="c-mark" aria-hidden="true"><span class="c-frame">${THINKING_FRAMES[0]}</span></span><span class="thinking-text">${esc(text)}</span></div>`;
 }
 
 function startThinking(bubble) {
@@ -1102,12 +1106,24 @@ function startThinking(bubble) {
   };
   paint();
   thinkingTimer = setInterval(paint, 2800);
+
+  let frame = 0;
+  frameTimer = setInterval(() => {
+    const mark = bubble && bubble.isConnected ? bubble.querySelector('.c-frame') : null;
+    if (!mark) return;
+    frame = (frame + 1) % THINKING_FRAMES.length;
+    mark.textContent = THINKING_FRAMES[frame];
+  }, 80);
 }
 
 function stopThinking() {
   if (thinkingTimer) {
     clearInterval(thinkingTimer);
     thinkingTimer = null;
+  }
+  if (frameTimer) {
+    clearInterval(frameTimer);
+    frameTimer = null;
   }
 }
 
