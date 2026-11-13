@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d10" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>TheChambers</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <header class="side-head">
+          <span class="brand">TheChambers</span>
+          <button id="new-chat" class="ghost" type="button">New</button>
+        </header>
+
+        <div class="project-row">
+          <select id="project" aria-label="Workspace"></select>
+          <button id="add-project" class="ghost icon" type="button" title="Add a folder">+</button>
+        </div>
+
+        <div class="tabs" role="tablist">
+          <button id="tab-chats" class="tab active" type="button" role="tab">Chats</button>
+          <button id="tab-sessions" class="tab" type="button" role="tab">Sessions</button>
+        </div>
+
+        <nav id="conversation-list" aria-label="Conversations"></nav>
+        <nav id="session-list" aria-label="Command Code sessions" hidden></nav>
+
+        <footer class="side-foot">
+          <div id="workspace" class="meta"></div>
+          <button id="logout" class="ghost small" type="button">Sign out</button>
+        </footer>
+      </aside>
+
+      <main id="main">
+        <header id="topbar">
+          <button id="menu" class="ghost icon" type="button" aria-label="Conversations">☰</button>
+          <div class="title-block">
+            <h1 id="conv-title">New conversation</h1>
+            <div id="conv-meta" class="meta"></div>
+          </div>
+          <span id="live-pill" class="pill" hidden>live</span>
+          <span id="status-dot" class="dot" title="idle"></span>
+        </header>
+
+        <section id="messages" aria-live="polite"></section>
+
+        <form id="composer">
+          <p id="external-note" class="note external" hidden>
+            This session is also open in a terminal. Run <code>/resume</code> there to load these
+            messages.
+          </p>
+          <div class="composer-row">
+            <textarea id="input" rows="1" placeholder="Ask Command Code…" autocomplete="off"></textarea>
+            <button id="send" class="primary" type="submit">Send</button>
+            <button id="stop" class="danger" type="button" hidden>Stop</button>
+          </div>
+          <div class="composer-foot">
+            <select id="mode" aria-label="Permission mode">
+              <option value="read-only">Read-only</option>
+              <option value="full">Full access</option>
+            </select>
+            <span id="model" class="meta"></span>
+          </div>
+        </form>
+      </main>
+
+      <div id="scrim" hidden></div>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
