@@ -147,7 +147,9 @@ Generated with 24 random bytes on first run if missing. Paste it on the phone on
 **Trust this device** ticked (30-day cookie). Ten wrong attempts lock that address out for ten
 minutes.
 
-To rotate it, replace the file's contents and restart the server. All devices will be asked again.
+To rotate it, replace the file's contents and restart the server. Every device is signed out,
+because the session cookie is derived from the password as well as the server secret. Deleting
+`secret.txt` (it is regenerated) revokes every device without changing the password.
 
 ## Using it
 

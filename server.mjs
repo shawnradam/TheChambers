@@ -85,7 +85,13 @@ if (PASSWORD.length < 16) {
 }
 
 // Cookie value is derived, so the password itself never lands in the browser.
-const SESSION_TOKEN = crypto.createHmac('sha256', SECRET).update('thechambers-session-v1').digest('hex');
+// The cookie is derived from the secret *and* the current password, so rotating the password
+// invalidates every device at once — the behaviour the README promises. Replacing secret.txt
+// additionally revokes everything without touching the password.
+const SESSION_TOKEN = crypto
+  .createHmac('sha256', SECRET)
+  .update(`thechambers-session-v1:${PASSWORD}`)
+  .digest('hex');
 const COOKIE_NAME = 'thechambers';
 
 // ---------------------------------------------------------------------------
