@@ -184,11 +184,18 @@ async function start(args) {
   const options = {port: DEFAULT_PORT, host: null, workspace: os.homedir(), local: false};
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
-    if (arg === '--port') options.port = Number(args[++i]);
+    if (arg === 'start' || arg === '--') continue;
+    else if (arg === '--port') options.port = Number(args[++i]);
+    else if (arg.startsWith('--port=')) options.port = Number(arg.slice('--port='.length));
     else if (arg === '--host') options.host = args[++i];
+    else if (arg.startsWith('--host=')) options.host = arg.slice('--host='.length);
     else if (arg === '--workspace') options.workspace = args[++i];
+    else if (arg.startsWith('--workspace=')) options.workspace = arg.slice('--workspace='.length);
     else if (arg === '--local') options.local = true;
-    else {
+    else if (arg === '--help' || arg === '-h') {
+      usage();
+      return 0;
+    } else {
       console.error(`thechambers: unknown option '${arg}'`);
       return 2;
     }
@@ -320,7 +327,15 @@ async function doctor() {
   return failures ? 1 : 0;
 }
 
-const [command, ...rest] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+let [command, ...rest] = argv;
+
+// Options may come before the command: `thechambers --port 3003` is a start.
+const helpFlags = new Set(['--version', '-v', '--help', '-h']);
+if (command && command.startsWith('-') && !helpFlags.has(command)) {
+  rest = argv;
+  command = 'start';
+}
 
 let code;
 switch (command) {
