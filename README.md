@@ -245,6 +245,18 @@ extra confirmation in the web UI.
 - In an empty session, the suggestion chips seed a prompt.
 - **Stop** kills the whole process tree. Everything that had already committed stays on disk.
 
+### Picker
+
+The composer has the same three triggers as prior art:
+
+- **`/`** opens the command menu. `↑`/`↓` moves, `Enter` or `Tab` selects, `Esc` closes. Commands
+  sourced **APP** run in the app (`/new`, `/model`, `/mode`, `/plan`, `/rename`, `/export`,
+  `/context`, `/stop`, `/settings`, `/help`). **STARTER** commands seed a ready prompt
+  (`/explore`, `/catch-up`, `/debug`, `/plan-feature`, `/craft-goal`, `/review`). **CMDC**
+  commands insert the command text for the agent.
+- **`@`** searches the workspace and inserts a file or folder path.
+- **`$`** lists installed skills from `~/.commandcode/skills` and `~/.agents/skills`.
+
 ### Permission modes
 
 - **Read-only** (default) — reads, searches, explains. Headless Command Code denies file writes
@@ -331,6 +343,7 @@ All endpoints except `/health` and `/login` require the session cookie.
 | `GET`/`POST` | `/api/notes?workspace=` | List or add notes, todos, and plans |
 | `PATCH`/`DELETE` | `/api/notes/:id` | Edit or remove one note |
 | `GET` | `/api/models` | Parsed `cmdc --list-models`, grouped by provider |
+| `GET` | `/api/skills` | Installed skills, read from `~/.commandcode/skills` and `~/.agents/skills` |
 | `GET`/`POST` | `/api/settings` | Update preferences |
 | `GET` | `/api/update?force=1` | Compare local HEAD with GitHub (checks whether the local tip is ahead) |
 | `POST` | `/api/update/apply` | Fast-forward pull; refuses when the tree is dirty |

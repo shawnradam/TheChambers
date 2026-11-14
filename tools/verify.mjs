@@ -48,6 +48,14 @@ console.log(`Verifying ${base}`);
   check('wrong password is refused', res.status === 401, `got ${res.status}`);
 }
 
+// 1b. Authorship is fixed in server.mjs and reported publicly, so an edited fork is visible.
+{
+  const health = await fetch(`${base}/health`).then((r) => r.json()).catch(() => ({}));
+  check('author is reported', health.author === 'Shawn Radam', `got ${health.author}`);
+  check('founder is reported', health.founder === 'Shawn Radam', `got ${health.founder}`);
+  check('authorship constants are intact', health.authorship === 'intact', health.authorship);
+}
+
 // 2. The real password sets a cookie.
 let cookie = null;
 {

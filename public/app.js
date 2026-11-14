@@ -59,6 +59,7 @@ const els = {
   attachments: $('#attachments'),
   permissions: $('#permissions'),
   goal: $('#goal'),
+  concise: $('#concise'),
   modelBtn: $('#model-btn'),
   modelLabel: $('#model-label'),
   agentBtn: $('#agent-btn'),
@@ -100,6 +101,7 @@ const state = {
   permission: localStorage.getItem('thechambers-permission') || 'read-only',
   agent: localStorage.getItem('thechambers-agent') || 'build',
   goal: false,
+  concise: localStorage.getItem('thechambers-concise') === '1',
   panel: null,
   panelFile: null,
   git: null,
@@ -1257,6 +1259,7 @@ async function openConversation(id) {
   try {
     const conv = await api(`/api/conversations/${id}`);
     state.activeId = conv.id;
+    localStorage.setItem('thechambers-open', conv.id);
     state.conversation = conv;
     state.messages = conv.messages || [];
     state.lastUsage = lastUsageOf(state.messages);
@@ -1269,6 +1272,10 @@ async function openConversation(id) {
     }
     openConversationView();
     renderThread(state.messages);
+    if (typeof conv.concise === 'boolean') {
+      state.concise = conv.concise;
+      applyConciseState();
+    }
     updateContextRing();
     renderSessionCard();
     renderSidebar();
@@ -1343,6 +1350,7 @@ async function pollConversation() {
 function newChat() {
   state.activeId = null;
   state.conversation = null;
+  localStorage.removeItem('thechambers-open');
   stopWatching();
   showEmpty();
   renderSidebar();
@@ -1369,6 +1377,7 @@ function handleStreamEvent(payload) {
   switch (payload.t) {
     case 'start':
       state.activeId = payload.conversationId;
+      localStorage.setItem('thechambers-open', payload.conversationId);
       break;
     case 'text':
       if (!live.text) stopThinking();
@@ -1423,6 +1432,7 @@ async function sendTurn(text) {
         text,
         mode,
         model: state.model || undefined,
+        concise: state.concise,
       }),
     });
 
@@ -2481,6 +2491,22 @@ function goalToggle() {
   }
 }
 
+// Concise mode: a per-conversation instruction that targets verbosity and repeated work. Off by
+// default, because a terse instruction makes verification-heavy coding worse.
+function applyConciseState() {
+  els.concise.classList.toggle('on', state.concise);
+  els.concise.title = state.concise
+    ? 'Concise mode on — fewer words, less repeated work'
+    : 'Concise mode — fewer words, less repeated work';
+}
+
+function conciseToggle() {
+  state.concise = !state.concise;
+  localStorage.setItem('thechambers-concise', state.concise ? '1' : '0');
+  applyConciseState();
+  toast(state.concise ? 'Concise mode on for this conversation.' : 'Concise mode off.');
+}
+
 // Screenshots and files: uploaded once, then referenced by path. Command Code reads the files
 // with its own tools, so the prompt only has to say where they are.
 function renderAttachments() {
@@ -2511,9 +2537,35 @@ function fileToBase64(file) {
   });
 }
 
+// Images are the most expensive thing you can paste. Downscale to 1024px / JPEG 0.8 before upload;
+// a phone screenshot typically drops by more than half, without hurting legibility.
+async function prepareImage(file, max = 1024, quality = 0.8) {
+  if (!/^image\//.test(file.type || '') || /gif|svg/i.test(file.type || '')) {
+    return {file, resized: false};
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const longest = Math.max(bitmap.width, bitmap.height);
+    if (longest <= max) return {file, resized: false};
+    const scale = max / longest;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob) return {file, resized: false};
+    const name = file.name.replace(/\.(png|webp|bmp|heic)$/i, '.jpg');
+    return {file: new File([blob], name, {type: 'image/jpeg'}), resized: true, original: file.size, size: blob.size};
+  } catch {
+    return {file, resized: false};
+  }
+}
+
 async function uploadFiles(fileList) {
   const files = [...(fileList || [])];
-  for (const file of files) {
+  for (const original of files) {
+    const prepared = await prepareImage(original);
+    const file = prepared.file;
     if (file.size > 12 * 1024 * 1024) {
       toast(`${file.name} is over the 12 MB limit.`);
       continue;
@@ -2526,6 +2578,10 @@ async function uploadFiles(fileList) {
       });
       state.attachments.push({...result, image: /^image\//.test(file.type || '')});
       renderAttachments();
+      if (prepared.resized) {
+        const saved = Math.max(0, Math.round((1 - file.size / prepared.original) * 100));
+        toast(`Resized to 1024px — ${saved}% smaller.`);
+      }
     } catch (err) {
       toast(err.message);
     }
@@ -2745,6 +2801,8 @@ function openSettings() {
             Code, and it has nothing to do with their Telegram remote control — I don't use
             Telegram. The interface is inspired by prior art; credit for the design is theirs.</p>
             <div class="kv"><span>Version</span><b>${esc(state.health ? state.health.version : '—')}</b></div>
+            <div class="kv"><span>Author</span><b>${esc((state.health && state.health.author) || 'Shawn Radam')}</b></div>
+            <div class="kv"><span>Founder</span><b>${esc((state.health && state.health.founder) || 'Shawn Radam')}</b></div>
             <div class="kv"><span>Licence</span><b>GPL-3.0-or-later</b></div>
             <div class="kv"><span>Source</span><b>github.com/shawnradam/TheChambers</b></div>
             <div class="kv"><span>Workspace</span><b>${esc(state.workspace)}</b></div>
@@ -2813,7 +2871,7 @@ function openMore() {
         menuItem('Settings', {iconName: 'gear', onClick: openSettings}),
         menuItem('Check for updates', {iconName: 'refresh', onClick: openUpdates}),
         menuSep(),
-        menuItem(`Version ${state.health ? state.health.version : '—'} by TheChambers`, {
+        menuItem(`Version ${state.health ? state.health.version : '—'} by ${(state.health && state.health.author) || 'Shawn Radam'}`, {
           iconName: 'book',
           onClick: () => window.open('https://github.com/shawnradam/TheChambers', '_blank', 'noopener'),
         }),
@@ -3064,7 +3122,7 @@ function pickerItems(mode, query) {
       .map((skill) => ({
         kind: 'skill',
         name: `$${skill.name}`,
-        desc: skill.description || 'Skill',
+        desc: (skill.description || 'Skill').replace(/[*`]/g, ''),
         insert: skill.name,
         source: 'SKILL',
       }));
@@ -3104,6 +3162,10 @@ function paintPicker() {
     return;
   }
   menu.hidden = false;
+  const anchor = els.composer.querySelector('.composer-card') || els.input;
+  const space = anchor.getBoundingClientRect().top - 64;
+  const cap = window.innerWidth <= 900 ? Math.min(388, space) : 260;
+  menu.style.maxHeight = `${Math.max(140, cap)}px`;
   const {items, index, mode, query} = state.picker;
   let body;
   if (!items.length) {
@@ -3113,7 +3175,9 @@ function paintPicker() {
           ? 'No matching files.'
           : 'Loading files…'
         : mode === 'skill'
-          ? 'Loading skills…'
+          ? state.skills
+            ? 'No matching skills.'
+            : 'Loading skills…'
           : 'No matching commands.';
     body = `<div class="composer-menu-empty">${esc(label)}</div>`;
   } else {
@@ -3129,6 +3193,8 @@ function paintPicker() {
       .join('');
   }
   menu.innerHTML = `<div class="composer-menu-list">${body}</div><div class="composer-menu-foot">↑↓ navigate · Enter select · Esc close</div>`;
+  const list = menu.querySelector('.composer-menu-list');
+  if (list) list.scrollTop = 0;
   const selected = menu.querySelector('.composer-command.selected');
   if (selected) selected.scrollIntoView({block: 'nearest'});
 }
@@ -3313,6 +3379,7 @@ els.permissions.addEventListener('click', permissionMenu);
 els.agentBtn.addEventListener('click', agentMenu);
 els.modelBtn.addEventListener('click', modelMenu);
 els.goal.addEventListener('click', goalToggle);
+els.concise.addEventListener('click', conciseToggle);
 els.attach.addEventListener('click', attachFiles);
 
 els.fileInput.addEventListener('change', () => {
@@ -3474,6 +3541,7 @@ async function boot() {
   placeComposer(true);
   renderComposerControls();
   renderProjectMenu();
+  applyConciseState();
 
   try {
     await loadHealth();
@@ -3488,6 +3556,12 @@ async function boot() {
   showEmpty();
   renderSidebar();
   updateContextRing();
+
+  // Reopen the conversation this device had open before the reload, if it still exists.
+  const openId = localStorage.getItem('thechambers-open');
+  if (openId && state.conversations.some((conv) => conv.id === openId)) {
+    await openConversation(openId);
+  }
 
   // Updates: read the preference, then keep an eye on GitHub. The badge appears on its own —
   // no reload needed — every five minutes, and whenever the tab comes back into view.

@@ -27,12 +27,21 @@ const CONVERSATIONS_FILE = path.join(CONFIG_DIR, 'conversations.json');
 const NOTES_FILE = path.join(CONFIG_DIR, 'notes.json');
 const UPLOAD_DIR = path.join(CONFIG_DIR, 'uploads');
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
+const USAGE_FILE = path.join(CONFIG_DIR, 'usage.json');
 
 const env = (name, legacy, fallback) => process.env[name] || (legacy ? process.env[legacy] : undefined) || fallback;
 
 const PORT = Number(env('THECHAMBERS_PORT', 'CMDC_WEB_PORT', 3002));
 const WORKSPACE = path.resolve(env('THECHAMBERS_WORKSPACE', 'CMDC_WEB_WORKSPACE', os.homedir()));
 const MAX_TURNS = String(env('THECHAMBERS_MAX_TURNS', 'CMDC_WEB_MAX_TURNS', 60));
+
+// Opt-in per conversation. Honest about what it can influence: the agent's own system prompt and
+// tool schemas are out of reach, so this targets output verbosity and redundant tool work.
+const CONCISE_PREAMBLE =
+  '[concise mode] Answer in the fewest words that carry the result. Do not restate the question. ' +
+  'Do not narrate files you are about to read. Do not re-summarise a tool result already shown. ' +
+  'Do not re-read a file already read in this session. Prefer one targeted search over broad ' +
+  'exploration.';
 const VERSION = '1.2.0';
 
 // Authorship is fixed here on purpose, and everything that answers "who made this" reads it from
@@ -211,6 +220,89 @@ function providerState() {
     label: PROVIDER.label || PROVIDER.id,
     detail: available.detail || '',
     available: Boolean(available.ok),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Token accounting
+//
+// Every provider that reports usage gets counted here, so "is concise mode saving anything?" is a
+// question with a number attached rather than an opinion.
+// ---------------------------------------------------------------------------
+
+const USAGE_LIMIT = 2000;
+let usageLog = [];
+try {
+  if (fs.existsSync(USAGE_FILE)) {
+    const parsed = JSON.parse(fs.readFileSync(USAGE_FILE, 'utf8'));
+    if (Array.isArray(parsed.turns)) usageLog = parsed.turns.slice(-USAGE_LIMIT);
+  }
+} catch (err) {
+  console.error(`[thechambers] Ignoring unreadable ${USAGE_FILE}: ${err.message}`);
+}
+
+let usageTimer = null;
+function persistUsage() {
+  clearTimeout(usageTimer);
+  usageTimer = setTimeout(() => {
+    try {
+      fs.writeFileSync(USAGE_FILE, JSON.stringify({turns: usageLog}));
+    } catch (err) {
+      console.error(`[thechambers] Could not save usage: ${err.message}`);
+    }
+  }, 500);
+}
+
+function recordUsage({conversationId, provider, usage, concise}) {
+  if (!usage) return;
+  usageLog.push({
+    ts: Date.now(),
+    conversationId: conversationId || null,
+    provider: provider || PROVIDER.id,
+    concise: Boolean(concise),
+    input: usage.inputTokens || 0,
+    output: usage.outputTokens || 0,
+    cacheRead: usage.cacheReadTokens || 0,
+    cacheWrite: usage.cacheWriteTokens || 0,
+    cost: usage.costUsd || 0,
+  });
+  if (usageLog.length > USAGE_LIMIT) usageLog = usageLog.slice(-USAGE_LIMIT);
+  persistUsage();
+}
+
+function usageSummary(days = 7) {
+  const since = Date.now() - Math.max(1, Math.min(days, 365)) * 86400000;
+  const dayMap = new Map();
+  const convMap = new Map();
+  const totals = {input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0};
+
+  for (const turn of usageLog) {
+    if (turn.ts < since) continue;
+    const add = (bucket) => {
+      bucket.input += turn.input;
+      bucket.output += turn.output;
+      bucket.cacheRead += turn.cacheRead;
+      bucket.cacheWrite += turn.cacheWrite;
+      bucket.cost += turn.cost;
+      bucket.turns += 1;
+    };
+
+    const day = new Date(turn.ts).toISOString().slice(0, 10);
+    if (!dayMap.has(day)) dayMap.set(day, {date: day, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0});
+    add(dayMap.get(day));
+
+    const key = turn.conversationId || 'unknown';
+    if (!convMap.has(key)) {
+      convMap.set(key, {conversationId: key, provider: turn.provider, concise: turn.concise, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0});
+    }
+    add(convMap.get(key));
+    add(totals);
+  }
+
+  return {
+    days: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    conversations: [...convMap.values()].sort((a, b) => b.input + b.output - (a.input + a.output)).slice(0, 30),
+    totals,
   };
 }
 
@@ -515,6 +607,8 @@ function publicConversation(conv) {
     sessionId: conv.sessionId || null,
     workspace: conv.workspace || WORKSPACE,
     model: conv.model || null,
+    provider: conv.provider || PROVIDER.id,
+    concise: Boolean(conv.concise),
     createdAt: conv.createdAt,
     updatedAt: conv.updatedAt,
     running: running.has(conv.id),
@@ -822,6 +916,7 @@ async function startTurn(req, res) {
     body.mode === 'full' ? 'full' : body.mode === 'plan' ? 'plan' : body.mode === 'accept' ? 'accept' : 'read-only';
   const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim().slice(0, 120) : null;
   const effort = typeof body.effort === 'string' && body.effort.trim() ? body.effort.trim().slice(0, 20) : null;
+  const concise = typeof body.concise === 'boolean' ? body.concise : null;
 
   let conv = body.conversationId ? findConversation(body.conversationId) : null;
   if (!conv) {
@@ -834,6 +929,8 @@ async function startTurn(req, res) {
 
   conv.updatedAt = Date.now();
   if (model) conv.model = model;
+  conv.provider = PROVIDER.id;
+  if (concise !== null) conv.concise = concise;
   if (!conv.title || conv.title === 'New conversation') {
     conv.title = text.replace(/\s+/g, ' ').slice(0, 60);
   }
@@ -902,7 +999,9 @@ async function startTurn(req, res) {
   child.stdin.on('error', () => {
     /* the CLI may close stdin early; nothing to do */
   });
-  child.stdin.end(text);
+  // The preamble rides with the message, so it is visible in the transcript and removable by
+  // editing history rather than hidden in a config the agent never sees.
+  child.stdin.end(conv.concise ? `${CONCISE_PREAMBLE}\n\n${text}` : text);
 
   const finish = (code, signal) => {
     if (finished) return;
@@ -923,6 +1022,13 @@ async function startTurn(req, res) {
     conv.lastTurnAt = Date.now();
     persist();
     if (typeof PROVIDER.invalidate === 'function') PROVIDER.invalidate();
+
+    recordUsage({
+      conversationId: conv.id,
+      provider: PROVIDER.id,
+      usage: assistant.usage,
+      concise: Boolean(conv.concise),
+    });
 
     sendEvent(res, {
       t: 'done',
@@ -1125,6 +1231,11 @@ const handler = async (req, res) => {
       settings.provider = id;
       persistSettings();
       return json(res, 200, {ok: true, active: id, requiresRestart: id !== PROVIDER.id});
+    }
+
+    if (req.method === 'GET' && pathname === '/api/usage') {
+      const days = Number(url.searchParams.get('days')) || 7;
+      return json(res, 200, usageSummary(days));
     }
 
     if (req.method === 'GET' && pathname === '/api/update') {
