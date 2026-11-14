@@ -2833,6 +2833,32 @@ function openSettings() {
   });
 }
 
+// Credits, not a redirect: the version line in the "..." menu opens this.
+function openCredits() {
+  const version = (state.health && state.health.version) || '1.2.0';
+  const author = (state.health && state.health.author) || 'Shawn Radam';
+  const licence = (state.health && state.health.license) || 'GPL-3.0-or-later';
+  openModal({
+    title: 'Credits',
+    width: 520,
+    content: `
+      <div class="credits">
+        <img class="credits-logo" src="/logo-192.png" alt="" />
+        <h3>TheChambers</h3>
+        <p class="credits-version">Version ${esc(version)}</p>
+        <p>Created by <b>${esc(author)}</b>.</p>
+        <p class="meta">Free software under the ${esc(licence)} licence. Use it, study it, change it and
+        share it; distributed modified versions stay under the same licence.</p>
+      </div>
+      <div class="kv"><span>Source</span><b><a href="https://github.com/shawnradam/TheChambers" target="_blank" rel="noreferrer noopener">github.com/shawnradam/TheChambers</a></b></div>
+      <div class="kv"><span>Agent</span><b>Command Code — commandcode.ai</b></div>
+      <div class="kv"><span>Design</span><b>Inspired by prior art</b></div>
+      <div class="kv"><span>Interface</span><b>player only — no agent code is bundled</b></div>
+      <p class="meta">Unofficial personal project. Not affiliated with, endorsed by, or supported by
+      Command Code or prior art, and unrelated to Command Code's own Telegram remote control.</p>`,
+  });
+}
+
 // The know-how, inside the app rather than in a README nobody opens. Shown once on first visit
 // and always available from the "..." menu and the "/help" command.
 function openHelp() {
@@ -2921,9 +2947,9 @@ function openMore() {
         menuItem('Settings', {iconName: 'gear', onClick: openSettings}),
         menuItem('Check for updates', {iconName: 'refresh', onClick: openUpdates}),
         menuSep(),
-        menuItem(`Version ${state.health ? state.health.version : '—'} by ${(state.health && state.health.author) || 'Shawn Radam'}`, {
+        menuItem(`Version ${state.health ? state.health.version : '—'}`, {
           iconName: 'book',
-          onClick: () => window.open('https://github.com/shawnradam/TheChambers', '_blank', 'noopener'),
+          onClick: openCredits,
         }),
         menuItem('Sign out', {iconName: 'lock', onClick: signOut}),
       );
