@@ -27,6 +27,17 @@ const SECRET_FILE = path.join(CONFIG_DIR, 'secret.txt');
 
 const DEFAULT_PORT = Number(process.env.THECHAMBERS_PORT || 3002);
 
+// Fixed authorship. Deliberately duplicated from server.mjs rather than read from package.json or
+// git, so `thechambers version` still answers correctly in a fork or a bare copy of the checkout.
+const AUTHOR = 'Shawn Radam';
+const FOUNDER = 'Shawn Radam';
+const COPYRIGHT = 'Copyright (C) 2026 Shawn Radam';
+const SOURCE_URL = 'https://github.com/shawnradam/TheChambers';
+
+function authorLine() {
+  return `author ${AUTHOR} (founder: ${FOUNDER}) — ${COPYRIGHT}`;
+}
+
 const TAILSCALE_BINARIES = [
   'tailscale',
   '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
@@ -151,6 +162,7 @@ function banner(host, port) {
   console.log('  +---+  THECHAMBERS');
   console.log('  | C |  Command Code from your phone, over Tailscale');
   console.log(`  +---+  v${version()}${commit ? ` - ${commit}` : ''}`);
+  console.log(`         ${authorLine()}`);
   console.log('');
   console.log(`  phone     http://${ip}:${port}`);
   if (ip !== '127.0.0.1') console.log(`  desktop   http://127.0.0.1:${port}`);
@@ -165,23 +177,26 @@ usage:
   thechambers status              is it running, and on which address
   thechambers stop                stop the process listening on the port
   thechambers doctor              check node, the CLI, Tailscale, the port
-  thechambers version             print the version and commit
+  thechambers providers           list agent adapters and which is active
+  thechambers version             print the version, commit and author
   thechambers help                this text
 
 start options:
   --port <n>          port to bind (default ${DEFAULT_PORT})
   --host <addr>       bind this address instead of the Tailscale one
   --workspace <dir>   folder new chats start in (default: home)
+  --provider <id>     use this agent adapter for the session (see: providers)
   --local             loopback only, no phone access
 
 environment:
-  THECHAMBERS_PORT, THECHAMBERS_HOST, THECHAMBERS_WORKSPACE, CMDC_ENTRY
+  THECHAMBERS_PORT, THECHAMBERS_HOST, THECHAMBERS_WORKSPACE, THECHAMBERS_PROVIDER, CMDC_ENTRY
 
-Not affiliated with Command Code or prior art.`);
+Not affiliated with Command Code or prior art.
+${COPYRIGHT}. Source: ${SOURCE_URL}`);
 }
 
 async function start(args) {
-  const options = {port: DEFAULT_PORT, host: null, workspace: os.homedir(), local: false};
+  const options = {port: DEFAULT_PORT, host: null, workspace: os.homedir(), local: false, provider: null};
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === 'start' || arg === '--') continue;
@@ -191,6 +206,8 @@ async function start(args) {
     else if (arg.startsWith('--host=')) options.host = arg.slice('--host='.length);
     else if (arg === '--workspace') options.workspace = args[++i];
     else if (arg.startsWith('--workspace=')) options.workspace = arg.slice('--workspace='.length);
+    else if (arg === '--provider') options.provider = args[++i];
+    else if (arg.startsWith('--provider=')) options.provider = arg.slice('--provider='.length);
     else if (arg === '--local') options.local = true;
     else if (arg === '--help' || arg === '-h') {
       usage();
@@ -237,6 +254,7 @@ async function start(args) {
       THECHAMBERS_HOST: host,
       THECHAMBERS_PORT: String(options.port),
       THECHAMBERS_WORKSPACE: workspace,
+      ...(options.provider ? {THECHAMBERS_PROVIDER: options.provider} : {}),
     },
   });
 
@@ -352,11 +370,38 @@ switch (command) {
   case 'doctor':
     code = await doctor();
     break;
+  case 'providers': {
+    try {
+      const {loadProviders, describeProviders} = await import('../providers/index.mjs');
+      const providers = await loadProviders();
+      let active = process.env.THECHAMBERS_PROVIDER || 'cmdc';
+      try {
+        const saved = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, 'settings.json'), 'utf8'));
+        if (!process.env.THECHAMBERS_PROVIDER && saved.provider) active = saved.provider;
+      } catch {
+        /* no settings yet */
+      }
+      for (const provider of describeProviders(providers, active)) {
+        const mark = provider.active ? '*' : ' ';
+        const state = provider.available ? 'ok' : '!!';
+        console.log(
+          `${mark} ${state}  ${provider.id.padEnd(12)} ${provider.label}${provider.detail ? `  — ${provider.detail}` : ''}`,
+        );
+      }
+      console.log('\n' + (active ? `active: ${active}` : 'no active provider'));
+      code = 0;
+    } catch (err) {
+      console.error(`thechambers: could not list providers: ${err.message}`);
+      code = 1;
+    }
+    break;
+  }
   case 'version':
   case '--version':
   case '-v': {
     const commit = git(['rev-parse', '--short', 'HEAD']);
     console.log(`thechambers ${version()}${commit ? ` (${commit})` : ''}`);
+    console.log(authorLine());
     code = 0;
     break;
   }

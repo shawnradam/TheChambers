@@ -12,13 +12,16 @@ contributions are the easiest to review.
 - **Licence:** contributions are accepted under the GNU GPL v3.0 or later, the same licence as the
   project. By opening a pull request you agree to that.
 
-## The two rules that keep it honest
+## The rules that keep it honest
 
 1. **No runtime dependencies.** The app is plain Node 22 plus four static files. Anything that
    needs an `npm install` at runtime is a design change, not a patch — discuss it in an issue first.
-2. **The transcript is the only history.** Conversations are not stored twice: `server.mjs` reads
-   `~/.commandcode/projects/<slug>/<id>.jsonl`. A feature that keeps a parallel message store is
-   almost certainly wrong.
+2. **The transcript is the only history.** Conversations are not stored twice: the active provider
+   reads the agent's own session files. A feature that keeps a parallel message store is almost
+   certainly wrong.
+3. **One file per agent.** Supporting a new coding-agent CLI means adding `providers/<id>.mjs`, not
+   branching the server. The contract, the normalized events and a worked example are in
+   [providers/README.md](./providers/README.md); `providers/cmdc.mjs` is the reference.
 
 ## Getting set up
 
@@ -26,6 +29,7 @@ contributions are the easiest to review.
 git clone https://github.com/shawnradam/TheChambers.git
 cd TheChambers
 node bin/thechambers.mjs doctor      # node, CLI, Tailscale, password, port
+node bin/thechambers.mjs providers   # which agent adapters are available
 node bin/thechambers.mjs --local     # run on 127.0.0.1:3002 without Tailscale
 ```
 
@@ -35,12 +39,15 @@ No build step, no install. `npm link` gives you the `thechambers` command global
 
 | File | Responsibility |
 | --- | --- |
-| `server.mjs` | HTTP server: auth, session catalog, transcript parsing, SSE turns, uploads, updates |
-| `bin/thechambers.mjs` | CLI: `start`, `status`, `stop`, `doctor`, `version` |
+| `server.mjs` | HTTP server: auth, SSE turns, uploads, updates, provider delegation |
+| `providers/cmdc.mjs` | Command Code adapter: turns, frames, sessions, transcripts |
+| `providers/index.mjs` | adapter registry, including `~/.config/thechambers/providers/` |
+| `bin/thechambers.mjs` | CLI: `start`, `status`, `stop`, `doctor`, `providers`, `version` |
 | `public/app.js` | client: streaming reader, live polling, markdown, panels, working indicator |
 | `public/styles.css` | the whole visual system; palette at the top in `:root` |
 | `public/index.html` | markup and the SVG icon sprite |
 | `tools/verify.mjs` | end-to-end check; run it after touching auth or the turn path |
+| `tools/provider-check.mjs` | adapter check: availability plus a throwaway turn |
 
 ## Testing a change
 

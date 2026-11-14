@@ -16,6 +16,8 @@ import crypto from 'node:crypto';
 import {spawn, execFile, execFileSync, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
+import {loadProviders, selectProvider, describeProviders} from './providers/index.mjs';
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'thechambers');
@@ -32,6 +34,32 @@ const PORT = Number(env('THECHAMBERS_PORT', 'CMDC_WEB_PORT', 3002));
 const WORKSPACE = path.resolve(env('THECHAMBERS_WORKSPACE', 'CMDC_WEB_WORKSPACE', os.homedir()));
 const MAX_TURNS = String(env('THECHAMBERS_MAX_TURNS', 'CMDC_WEB_MAX_TURNS', 60));
 const VERSION = '1.2.0';
+
+// Authorship is fixed here on purpose, and everything that answers "who made this" reads it from
+// these constants rather than package.json or git metadata: the public /health payload, the
+// X-Author header, the About pane, `thechambers version` and tools/verify.mjs. Forks are free
+// under the GPL, but the credit line should not drift silently, so the identity is hashed and the
+// hash is checked at startup and by the verifier: an edit is reported as modified, not hidden.
+const AUTHOR = 'Shawn Radam';
+const FOUNDER = 'Shawn Radam';
+const COPYRIGHT = 'Copyright (C) 2026 Shawn Radam';
+const LICENSE_ID = 'GPL-3.0-or-later';
+const SOURCE_URL = 'https://github.com/shawnradam/TheChambers';
+const AUTHOR_HASH = 'dd4181c984b2a56182af20840a68091644b410f85da66528953857245fc562d8';
+
+const AUTHORSHIP = Object.freeze({
+  author: AUTHOR,
+  founder: FOUNDER,
+  copyright: COPYRIGHT,
+  license: LICENSE_ID,
+  source: SOURCE_URL,
+});
+
+function authorshipIntact() {
+  const canonical = [AUTHOR, FOUNDER, COPYRIGHT, LICENSE_ID, SOURCE_URL].join('\n');
+  return crypto.createHash('sha256').update(canonical).digest('hex') === AUTHOR_HASH;
+}
+
 // Where updates come from. A fork can point this somewhere else without editing code.
 const REPO = env('THECHAMBERS_REPO', null, 'shawnradam/TheChambers');
 // A session touched this recently is almost certainly still open in a terminal.
@@ -160,6 +188,30 @@ function persistSettings() {
   } catch (err) {
     console.error(`[thechambers] Could not save settings: ${err.message}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// The active agent adapter
+//
+// Everything agent-specific lives in providers/<id>.mjs. The server only knows the contract:
+// turnArgs, spawn, parse, sessions, transcript. Selection order is env, then settings, then the
+// built-in Command Code adapter.
+// ---------------------------------------------------------------------------
+
+const PROVIDERS = await loadProviders();
+const PROVIDER = selectProvider(
+  PROVIDERS,
+  env('THECHAMBERS_PROVIDER', null, settings.provider || 'cmdc'),
+);
+
+function providerState() {
+  const available = PROVIDER.available ? PROVIDER.available() : {ok: true, detail: ''};
+  return {
+    id: PROVIDER.id,
+    label: PROVIDER.label || PROVIDER.id,
+    detail: available.detail || '',
+    available: Boolean(available.ok),
+  };
 }
 
 function git(args, options = {}) {
@@ -369,6 +421,8 @@ function json(res, status, payload) {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     'Cache-Control': 'no-store',
+    'X-Author': AUTHOR,
+    'X-Copyright': COPYRIGHT,
   });
   res.end(body);
 }
@@ -443,81 +497,6 @@ function noteLoginFailure(ip) {
   entry.count += 1;
   if (entry.count >= 10) entry.until = Date.now() + 10 * 60 * 1000;
   passwordAttempts.set(ip, entry);
-}
-
-// The CLI is a .cmd shim on Windows, which Node refuses to spawn without a shell. Running the
-// bundled entry point through this same node binary avoids the shell entirely; the prompt goes
-// in on stdin so no user text ever reaches an argument list.
-// Where the Command Code CLI lives. npm's layout differs per platform, so ask npm first and keep
-// a list of known prefixes as a fallback: Homebrew on Apple silicon, Intel Macs, npm's own
-// user-level prefix, nvm, Volta, and the Windows roaming prefix.
-function npmGlobalRoot() {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  try {
-    return execFileSync(npm, ['root', '-g'], {
-      encoding: 'utf8',
-      timeout: 15000,
-      windowsHide: true,
-      shell: process.platform === 'win32',
-    })
-      .split(/\r?\n/)[0]
-      .trim();
-  } catch {
-    return null;
-  }
-}
-
-function resolveCliEntry() {
-  if (process.env.CMDC_ENTRY) return process.env.CMDC_ENTRY;
-
-  const suffixes = [
-    path.join('command-code', 'dist', 'index.mjs'),
-    path.join('@commandcode', 'cli', 'dist', 'index.mjs'),
-  ];
-  const roots = new Set();
-  const globalRoot = npmGlobalRoot();
-  if (globalRoot) roots.add(globalRoot);
-  roots.add(path.join(process.env.APPDATA || '', 'npm', 'node_modules'));
-  roots.add(path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'node_modules'));
-  roots.add('/opt/homebrew/lib/node_modules');
-  roots.add('/usr/local/lib/node_modules');
-  roots.add('/usr/lib/node_modules');
-  roots.add(path.join(os.homedir(), '.npm-global', 'lib', 'node_modules'));
-  roots.add(path.join(os.homedir(), '.volta', 'tools', 'image', 'packages'));
-
-  for (const root of roots) {
-    if (!root) continue;
-    for (const suffix of suffixes) {
-      const candidate = path.join(root, suffix);
-      if (fs.existsSync(candidate)) return candidate;
-    }
-  }
-
-  // nvm keeps one tree per Node version; take the newest that has the CLI.
-  try {
-    const nvm = path.join(os.homedir(), '.nvm', 'versions', 'node');
-    for (const version of fs.readdirSync(nvm).sort().reverse()) {
-      const candidate = path.join(nvm, version, 'lib', 'node_modules', 'command-code', 'dist', 'index.mjs');
-      if (fs.existsSync(candidate)) return candidate;
-    }
-  } catch {
-    /* no nvm */
-  }
-
-  return null;
-}
-
-const CLI_ENTRY = resolveCliEntry();
-
-function spawnCmdc(args, cwd) {
-  const options = {
-    cwd: cwd || WORKSPACE,
-    env: {...process.env, NO_COLOR: '1', FORCE_COLOR: '0'},
-    windowsHide: true,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  };
-  if (CLI_ENTRY) return spawn(process.execPath, [CLI_ENTRY, ...args], options);
-  return spawn('cmdc', args, {...options, shell: true});
 }
 
 function stopChild(child) {
@@ -721,9 +700,13 @@ function parseModels(text) {
 
 async function listModels() {
   if (modelsCache && Date.now() - modelsAt < 6 * 60 * 60 * 1000) return modelsCache;
-  const file = CLI_ENTRY ? process.execPath : process.platform === 'win32' ? 'cmdc.cmd' : 'cmdc';
-  const args = CLI_ENTRY ? [CLI_ENTRY, '--list-models'] : ['--list-models'];
-  const result = await runProcess(file, args, {timeout: 20000});
+  if (typeof PROVIDER.command !== 'function') {
+    modelsCache = {groups: [], defaultModel: null};
+    modelsAt = Date.now();
+    return modelsCache;
+  }
+  const command = PROVIDER.command();
+  const result = await runProcess(command.file, [...command.args, '--list-models'], {timeout: 20000});
   const text = result.stdout || result.stderr;
   const groups = parseModels(text);
   const flat = groups.flatMap((group) => group.models);
@@ -735,234 +718,8 @@ async function listModels() {
   return modelsCache;
 }
 
-const headerCache = new Map(); // transcript file -> {mtimeMs, header, meta}
-
-function readSessionFile(file) {
-  let stat;
-  try {
-    stat = fs.statSync(file);
-  } catch {
-    return null;
-  }
-  const cached = headerCache.get(file);
-  if (cached && cached.mtimeMs === stat.mtimeMs) return cached;
-
-  let header = null;
-  try {
-    const fd = fs.openSync(file, 'r');
-    const buffer = Buffer.alloc(8192);
-    const bytes = fs.readSync(fd, buffer, 0, buffer.length, 0);
-    fs.closeSync(fd);
-    const firstLine = buffer.subarray(0, bytes).toString('utf8').split('\n')[0];
-    header = JSON.parse(firstLine);
-  } catch {
-    header = null;
-  }
-
-  let meta = {};
-  try {
-    meta = JSON.parse(fs.readFileSync(file.replace(/\.jsonl$/, '.meta.json'), 'utf8'));
-  } catch {
-    meta = {};
-  }
-
-  const record = {mtimeMs: stat.mtimeMs, size: stat.size, header, meta};
-  headerCache.set(file, record);
-  return record;
-}
-
-let indexCache = {at: 0, index: new Map()};
-
-function sessionIndex() {
-  if (indexCache.at && Date.now() - indexCache.at < 4000) return indexCache.index;
-  const index = new Map();
-  let dirs = [];
-  try {
-    dirs = fs.readdirSync(SESSIONS_ROOT, {withFileTypes: true}).filter((entry) => entry.isDirectory());
-  } catch {
-    indexCache = {at: Date.now(), index};
-    return index;
-  }
-
-  for (const dir of dirs) {
-    const dirPath = path.join(SESSIONS_ROOT, dir.name);
-    let files = [];
-    try {
-      files = fs.readdirSync(dirPath);
-    } catch {
-      continue;
-    }
-    for (const name of files) {
-      if (!name.endsWith('.jsonl')) continue;
-      if (/\.(checkpoints|prompts|share)\.jsonl$/.test(name)) continue;
-      const file = path.join(dirPath, name);
-      const record = readSessionFile(file);
-      if (!record || !record.header || !record.header.cwd) continue;
-      const id = name.slice(0, -'.jsonl'.length);
-      index.set(id, {
-        id,
-        file,
-        cwd: record.header.cwd,
-        createdAt: record.header.timestamp || new Date(record.mtimeMs).toISOString(),
-        updatedAt: record.mtimeMs,
-        title: (record.meta && record.meta.title) || '',
-        model: (record.meta && record.meta.model) || null,
-      });
-    }
-  }
-
-  indexCache = {at: Date.now(), index};
-  return index;
-}
-
-function invalidateSessionIndex() {
-  indexCache = {at: 0, index: new Map()};
-}
-
-function sessionsFor(workspace) {
-  const wanted = workspace ? normalisePath(workspace) : null;
-  const all = [...sessionIndex().values()];
-  return all
-    .filter((item) => !wanted || normalisePath(item.cwd) === wanted)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
-}
-
-// Walks the transcript's parent chain from the newest entry backwards, so what the phone shows
-// is the branch that is actually active - the same rule /tree and /rewind use.
-//
-// Results are cached by file mtime + size: the conversation view polls this while a terminal is
-// writing to the same session, and re-parsing a multi-megabyte transcript every two seconds
-// would be wasteful. A new byte written by any process invalidates the entry.
-const transcriptCache = new Map(); // transcript file -> {mtimeMs, size, messages}
-
-function readTranscript(file) {
-  let stat;
-  try {
-    stat = fs.statSync(file);
-  } catch {
-    return [];
-  }
-
-  const cached = transcriptCache.get(file);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.messages;
-
-  let text = '';
-  try {
-    const cap = 4 * 1024 * 1024;
-    const start = stat.size > cap ? stat.size - cap : 0;
-    const fd = fs.openSync(file, 'r');
-    const buffer = Buffer.alloc(stat.size - start);
-    fs.readSync(fd, buffer, 0, buffer.length, start);
-    fs.closeSync(fd);
-    text = buffer.toString('utf8');
-    if (start > 0) {
-      const newline = text.indexOf('\n');
-      text = newline >= 0 ? text.slice(newline + 1) : '';
-    }
-  } catch {
-    return [];
-  }
-
-  const entries = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const entry = JSON.parse(line);
-      if (entry.type === 'message' && entry.message) entries.push(entry);
-    } catch {
-      /* corrupt line: skip it, same as the CLI does */
-    }
-  }
-  if (!entries.length) return [];
-
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
-  const chain = [];
-  const seen = new Set();
-  let cursor = entries[entries.length - 1];
-  while (cursor && !seen.has(cursor.id)) {
-    seen.add(cursor.id);
-    chain.push(cursor);
-    cursor = cursor.parentId ? byId.get(cursor.parentId) : null;
-  }
-  chain.reverse();
-
-  const messages = [];
-  const toolsById = new Map();
-
-  for (const entry of chain) {
-    const message = entry.message || {};
-    const content = Array.isArray(message.content) ? message.content : [];
-    const source = message.meta && message.meta.source;
-    const ts = Date.parse(entry.timestamp) || Date.now();
-
-    if (source === 'tool') {
-      for (const part of content) {
-        if (part.type !== 'tool_result') continue;
-        const tool = toolsById.get(part.tool_use_id);
-        if (!tool) continue;
-        const result = Array.isArray(part.content)
-          ? part.content
-              .filter((piece) => piece.type === 'text')
-              .map((piece) => piece.text)
-              .join('\n')
-          : typeof part.content === 'string'
-            ? part.content
-            : '';
-        tool.result = result.slice(0, 4000);
-        tool.status = 'done';
-      }
-      continue;
-    }
-
-    if (message.role === 'user') {
-      const userText = content
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text)
-        .join('\n');
-      if (userText.trim()) messages.push({role: 'user', text: userText, ts});
-      continue;
-    }
-
-    if (message.role === 'assistant') {
-      let target = messages[messages.length - 1];
-      if (!target || target.role !== 'assistant') {
-        target = {role: 'assistant', text: '', tools: [], ts};
-        messages.push(target);
-      }
-      for (const part of content) {
-        if (part.type === 'text' && part.text) {
-          target.text = target.text ? `${target.text}\n${part.text}` : part.text;
-        } else if (part.type === 'tool_use') {
-          const tool = {
-            id: part.id,
-            name: part.name,
-            input: summariseInput(part.input),
-            status: 'done',
-            result: null,
-          };
-          target.tools.push(tool);
-          toolsById.set(part.id, tool);
-        }
-      }
-      if (entry.model) target.model = entry.model;
-      if (entry.usage) target.usage = entry.usage;
-    }
-  }
-
-  const trimmed = messages.slice(-200);
-  transcriptCache.set(file, {mtimeMs: stat.mtimeMs, size: stat.size, messages: trimmed});
-  return trimmed;
-}
-
-function transcriptMessages(sessionId) {
-  if (!sessionId) return [];
-  const item = sessionIndex().get(sessionId);
-  if (!item) return [];
-  return readTranscript(item.file);
-}
-
 function latestUserText(sessionId) {
-  const messages = transcriptMessages(sessionId);
+  const messages = PROVIDER.transcript(sessionId);
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i].role === 'user' && messages[i].text) return messages[i].text;
   }
@@ -973,115 +730,82 @@ function latestUserText(sessionId) {
 // A turn
 // ---------------------------------------------------------------------------
 
+// Applies one provider frame: the adapter normalizes its agent's output, and this maps it onto
+// the events the browser already understands.
 function handleFrame(frame, ctx) {
-  if (!frame || typeof frame !== 'object') return;
+  let events = [];
+  try {
+    events = PROVIDER.parse(frame) || [];
+  } catch (err) {
+    logLine(`provider parse failed: ${err.message}`);
+    return;
+  }
 
-  if (frame.type === 'event' && frame.event) {
-    const ev = frame.event;
-    switch (ev.type) {
-      case 'text_delta':
-        ctx.assistant.text += ev.delta;
-        sendEvent(ctx.res, {t: 'text', d: ev.delta});
+  for (const event of Array.isArray(events) ? events : [events]) {
+    if (!event) continue;
+    switch (event.type) {
+      case 'text':
+        ctx.assistant.text += event.text;
+        sendEvent(ctx.res, {t: 'text', d: event.text});
         break;
 
-      case 'message_end': {
-        const content = Array.isArray(ev.content) ? ev.content : [];
-        const text = content
-          .filter((part) => part.type === 'text')
-          .map((part) => part.text)
-          .join('\n');
-        if (text && !ctx.assistant.text) ctx.assistant.text = text;
-        for (const part of content) {
-          if (part.type !== 'tool_use') continue;
-          ctx.assistant.tools.push({
-            id: part.id,
-            name: part.name,
-            input: summariseInput(part.input),
-            status: 'queued',
+      case 'tool': {
+        let tool = ctx.assistant.tools.find((entry) => entry.id === event.id);
+        if (!tool) {
+          tool = {
+            id: event.id,
+            name: event.name,
+            input: event.input || '',
+            status: event.status || 'queued',
             result: null,
-          });
+          };
+          ctx.assistant.tools.push(tool);
         }
-        break;
-      }
-
-      case 'tool_running': {
-        const tool = ctx.assistant.tools.find((t) => t.id === ev.toolCallId);
-        if (tool) {
-          tool.status = 'running';
-          if (ev.description) tool.description = ev.description;
-        }
+        tool.status = event.status || tool.status;
+        if (event.name) tool.name = event.name;
+        if (event.description) tool.description = event.description;
+        if (event.result) tool.result = event.result;
         sendEvent(ctx.res, {
           t: 'tool',
-          id: ev.toolCallId,
-          name: ev.toolName,
-          status: 'running',
-          description: ev.description || null,
+          id: tool.id,
+          name: tool.name,
+          status: tool.status,
+          description: event.description || null,
+          result: event.result || null,
         });
         break;
       }
 
-      case 'tool_completed':
-      case 'tool_errored':
-      case 'tool_denied': {
-        const tool = ctx.assistant.tools.find((t) => t.id === ev.toolCallId);
-        const status =
-          ev.type === 'tool_completed' ? 'done' : ev.type === 'tool_denied' ? 'denied' : 'error';
-        const result = Array.isArray(ev.result)
-          ? ev.result
-              .filter((part) => part.type === 'text')
-              .map((part) => part.text)
-              .join('\n')
-          : typeof ev.result === 'string'
-            ? ev.result
-            : '';
-        if (tool) {
-          tool.status = status;
-          tool.result = result.slice(0, 4000);
-        }
-        sendEvent(ctx.res, {
-          t: 'tool',
-          id: ev.toolCallId,
-          name: ev.toolName,
-          status,
-          result: result.slice(0, 4000),
-        });
-        break;
-      }
-
-      case 'model_request_start':
-        if (ev.model) sendEvent(ctx.res, {t: 'model', model: ev.model});
+      case 'model':
+        sendEvent(ctx.res, {t: 'model', model: event.model});
         break;
 
-      case 'run_end': {
-        const result = ev.result || {};
-        if (result.nextState && result.nextState.sessionId) ctx.sessionId = result.nextState.sessionId;
-        if (result.finalText && !ctx.assistant.text) ctx.assistant.text = result.finalText;
-        if (result.usage) ctx.assistant.usage = result.usage;
+      case 'session':
+        if (event.sessionId) ctx.sessionId = event.sessionId;
         break;
-      }
 
-      case 'run_error':
-        ctx.assistant.error = ev.message || ev.error || 'The run failed.';
-        sendEvent(ctx.res, {t: 'error', message: ctx.assistant.error});
+      case 'usage':
+        ctx.assistant.usage = event.usage;
+        break;
+
+      case 'final':
+        if (!ctx.assistant.text) ctx.assistant.text = event.text;
+        break;
+
+      case 'error':
+        ctx.assistant.error = event.message;
+        sendEvent(ctx.res, {t: 'error', message: event.message});
+        break;
+
+      case 'done':
+        if (event.subtype) ctx.exitSubtype = event.subtype;
         break;
 
       default:
         break;
     }
-    return;
-  }
-
-  if (frame.type === 'result') {
-    if (frame.sessionId) ctx.sessionId = frame.sessionId;
-    if (frame.subtype === 'error') {
-      ctx.assistant.error = frame.error || 'Command Code reported an error.';
-    }
-    if (frame.finalText && !ctx.assistant.text) ctx.assistant.text = frame.finalText;
-    if (frame.usage) ctx.assistant.usage = frame.usage;
-    ctx.exitSubtype = frame.subtype;
   }
 }
-
 async function startTurn(req, res) {
   let body;
   try {
@@ -1115,13 +839,13 @@ async function startTurn(req, res) {
   }
   persist();
 
-  const args = ['-p', '--output-format', 'json', '--max-turns', MAX_TURNS, '--skip-onboarding'];
-  if (conv.sessionId) args.push('--resume', conv.sessionId);
-  if (model) args.push('--model', model);
-  if (effort) args.push('--effort', effort);
-  if (mode === 'full') args.push('--yolo');
-  if (mode === 'accept') args.push('--accept-edits');
-  if (mode === 'plan') args.push('--plan');
+  const args = PROVIDER.turnArgs({
+    sessionId: conv.sessionId,
+    mode,
+    model,
+    effort,
+    maxTurns: MAX_TURNS,
+  });
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
@@ -1136,7 +860,7 @@ async function startTurn(req, res) {
 
   sendEvent(res, {t: 'start', conversationId: conv.id, mode, workspace: conv.workspace});
 
-  const child = spawnCmdc(args, conv.workspace);
+  const child = PROVIDER.spawn(args, conv.workspace);
   running.set(conv.id, {child, assistant, wasStopped: false});
 
   const heartbeat = setInterval(() => {
@@ -1198,7 +922,7 @@ async function startTurn(req, res) {
     conv.updatedAt = Date.now();
     conv.lastTurnAt = Date.now();
     persist();
-    invalidateSessionIndex();
+    if (typeof PROVIDER.invalidate === 'function') PROVIDER.invalidate();
 
     sendEvent(res, {
       t: 'done',
@@ -1256,6 +980,8 @@ function serveStatic(res, relPath, type, status = 200) {
       'Content-Length': body.length,
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
+      'X-Author': AUTHOR,
+      'X-Copyright': COPYRIGHT,
       'Referrer-Policy': 'no-referrer',
       'Content-Security-Policy':
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src http: https:; base-uri 'none'; form-action 'none'",
@@ -1286,6 +1012,8 @@ const handler = async (req, res) => {
         host: HOST,
         workspace: WORKSPACE,
         running: running.size,
+        ...AUTHORSHIP,
+        authorship: authorshipIntact() ? 'intact' : 'modified',
       });
     }
 
@@ -1369,10 +1097,34 @@ const handler = async (req, res) => {
         workspaces: state.workspaces,
         host: process.env.THECHAMBERS_HOST || null,
         port: PORT,
-        cliEntry: CLI_ENTRY,
+        cliEntry: providerState().detail,
+        provider: providerState(),
+        providers: describeProviders(PROVIDERS, PROVIDER.id),
         running: [...running.keys()],
+        ...AUTHORSHIP,
+        authorship: authorshipIntact() ? 'intact' : 'modified',
         conversations: state.conversations.map(publicConversation),
       });
+    }
+
+    if (req.method === 'GET' && pathname === '/api/providers') {
+      return json(res, 200, {
+        active: PROVIDER.id,
+        providers: describeProviders(PROVIDERS, PROVIDER.id),
+      });
+    }
+
+    // Switching provider is a persisted preference; the running process keeps the adapter it
+    // booted with until it is restarted, so the answer says so plainly.
+    if (req.method === 'POST' && pathname === '/api/providers') {
+      const body = await readJson(req).catch(() => ({}));
+      const id = typeof body.id === 'string' ? body.id : '';
+      if (!PROVIDERS.some((provider) => provider.id === id)) {
+        return json(res, 400, {error: `No provider called '${id}'.`});
+      }
+      settings.provider = id;
+      persistSettings();
+      return json(res, 200, {ok: true, active: id, requiresRestart: id !== PROVIDER.id});
     }
 
     if (req.method === 'GET' && pathname === '/api/update') {
@@ -1459,11 +1211,11 @@ const handler = async (req, res) => {
       return res.end(data);
     }
 
-    // Projects are the working directories Command Code already has sessions for, plus any
+    // Projects are the working directories the active agent already has sessions for, plus any
     // folder added by hand. This is the phone-friendly version of a folder picker.
     if (req.method === 'GET' && pathname === '/api/projects') {
       const seen = new Map();
-      for (const item of sessionIndex().values()) {
+      for (const item of PROVIDER.sessions({limit: 5000})) {
         const key = normalisePath(item.cwd);
         const existing = seen.get(key);
         if (!existing) {
@@ -1503,25 +1255,14 @@ const handler = async (req, res) => {
     if (req.method === 'GET' && pathname === '/api/sessions') {
       const workspace = url.searchParams.get('workspace');
       const limit = Math.min(Number(url.searchParams.get('limit')) || 60, 200);
-      const sessions = sessionsFor(workspace)
-        .slice(0, limit)
-        .map((item) => ({
-          id: item.id,
-          title: item.title || '',
-          cwd: item.cwd,
-          model: item.model,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt,
-          // Written to within the last couple of minutes: most likely an open terminal session.
-          active: Date.now() - item.updatedAt < LIVE_WINDOW_MS,
-        }));
+      const sessions = PROVIDER.sessions({workspace, limit});
       return json(res, 200, {sessions});
     }
 
     if (req.method === 'POST' && pathname === '/api/sessions/resume') {
       const body = await readJson(req).catch(() => ({}));
       const sessionId = typeof body.sessionId === 'string' ? body.sessionId : '';
-      const item = sessionIndex().get(sessionId);
+      const item = PROVIDER.sessions({limit: 5000}).find((entry) => entry.id === sessionId);
       if (!item) return json(res, 404, {error: 'That session is not on this machine.'});
 
       const existing = findConversationBySession(sessionId);
@@ -1543,8 +1284,10 @@ const handler = async (req, res) => {
       const id = pathname.slice('/api/conversations/'.length);
       const conv = findConversation(id);
       if (!conv) return json(res, 404, {error: 'No such conversation.'});
-      const messages = transcriptMessages(conv.sessionId);
-      const item = conv.sessionId ? sessionIndex().get(conv.sessionId) : null;
+      const messages = PROVIDER.transcript(conv.sessionId);
+      const item = conv.sessionId
+        ? PROVIDER.sessions({limit: 5000}).find((entry) => entry.id === conv.sessionId)
+        : null;
       // A write landed after our last turn finished, so something else (a terminal, or another
       // device) is driving this session too.
       const externalActive = Boolean(
@@ -1943,8 +1686,14 @@ addListener(HOST);
 if (HOST !== '127.0.0.1') addListener('127.0.0.1');
 
 console.log(`[thechambers] workspace: ${WORKSPACE}`);
+console.log(`[thechambers] author:    ${AUTHOR} (founder: ${FOUNDER})`);
+if (!authorshipIntact()) {
+  const warning = `[thechambers] WARNING: the authorship constants were edited. ${COPYRIGHT} is the original.`;
+  console.warn(warning);
+  logLine(warning);
+}
 console.log(`[thechambers] password:  ${PASSWORD_FILE}`);
-console.log(`[thechambers] cli:       ${CLI_ENTRY || 'cmdc (PATH)'}`);
+console.log(`[thechambers] agent:     ${PROVIDER.label || PROVIDER.id} (${providerState().detail || 'no detail'})`);
 if (HOST === '127.0.0.1') {
   console.log('[thechambers] Bound to loopback only - the phone will not reach this.');
 }
