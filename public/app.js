@@ -2833,6 +2833,55 @@ function openSettings() {
   });
 }
 
+// The know-how, inside the app rather than in a README nobody opens. Shown once on first visit
+// and always available from the "..." menu and the "/help" command.
+function openHelp() {
+  localStorage.setItem('thechambers-help-seen', '1');
+  openModal({
+    title: 'How this works',
+    width: 640,
+    content: `
+      <h3>Resuming a session</h3>
+      <div class="kv"><span>In this app</span><b>Projects → open a folder → tap a session</b></div>
+      <div class="kv"><span>In the terminal</span><b>/resume, then ↑ ↓ to pick, Enter to open</b></div>
+      <div class="kv"><span>From a shell</span><b>cmd -c · cmd -r · cmd -r "name" · cmd --session 3f9a</b></div>
+      <p class="meta">Sessions started headlessly (the ones this app creates) are hidden from the
+      terminal picker, but an exact id still resumes them here or with
+      <code>cmd --session &lt;id&gt;</code>.</p>
+
+      <h3>The terminal and this page</h3>
+      <p>Both read the same session file. A message sent here is appended to the transcript, but the
+      terminal keeps its own copy in memory — run <code>/resume</code> there and pick the session to
+      load it. Turns finished in the terminal appear here within a few seconds. The <b>live</b> pill
+      means another writer (usually that terminal) is active; don't type in both at once.</p>
+
+      <h3>Modes</h3>
+      <div class="kv"><span>Read-only</span><b>can read and explain; writes and commands are denied</b></div>
+      <div class="kv"><span>Full access</span><b>edits files and runs commands without asking</b></div>
+      <p class="meta">Plan and Accept edits appear when the active agent supports them. The mode
+      applies to the next message, not the whole session.</p>
+
+      <h3>Saving tokens</h3>
+      <div class="kv"><span>Concise</span><b>the ≡ button: fewer words, less repeated work</b></div>
+      <div class="kv"><span>Images</span><b>downscaled to 1024px before upload</b></div>
+      <div class="kv"><span>Measure it</span><b>GET /api/usage?days=7 in this browser</b></div>
+      <p class="meta">A fixed system prompt and tool schemas are outside the app's control, so expect
+      10–20% typical savings, more on chat and screenshots, little on large refactors.</p>
+
+      <h3>Agents</h3>
+      <p>The composer's agent chip shows who is answering. Adapters live in
+      <code>providers/</code> — one file per CLI agent — and extra ones load from
+      <code>~/.config/thechambers/providers/</code>. <code>thechambers providers</code> lists them
+      with availability.</p>
+
+      <h3>If something looks wrong</h3>
+      <div class="kv"><span>Address</span><b>this page must be opened over Tailscale, not the LAN</b></div>
+      <div class="kv"><span>Password</span><b>~/.config/thechambers/ui-password.txt</b></div>
+      <div class="kv"><span>Log</span><b>~/.config/thechambers/server.log</b></div>
+      <div class="kv"><span>Health</span><b>thechambers status</b></div>`,
+  });
+}
+
 function openShortcuts() {
   openModal({
     title: 'Keyboard shortcuts',
@@ -2867,6 +2916,7 @@ function openMore() {
             els.search.focus();
           },
         }),
+        menuItem('How this works', {iconName: 'book', onClick: openHelp}),
         menuItem('Keyboard shortcuts', {iconName: 'sliders', onClick: openShortcuts}),
         menuItem('Settings', {iconName: 'gear', onClick: openSettings}),
         menuItem('Check for updates', {iconName: 'refresh', onClick: openUpdates}),
@@ -2914,7 +2964,9 @@ const APP_COMMANDS = [
   {name: '/stop', desc: 'Stop the running turn', source: 'APP', run: () => stopTurn()},
   {name: '/goal', desc: 'Start a goal with the next message', source: 'APP', run: () => goalToggle()},
   {name: '/settings', desc: 'Open settings', source: 'APP', run: () => openSettings()},
-  {name: '/help', desc: 'Keyboard shortcuts and commands', source: 'APP', run: () => openShortcuts()},
+  {name: '/concise', desc: 'Toggle concise mode for this conversation', source: 'APP', run: () => conciseToggle()},
+  {name: '/help', desc: 'How this works: resuming, the bridge, modes, tokens', source: 'APP', run: () => openHelp()},
+  {name: '/keys', desc: 'Keyboard shortcuts', source: 'APP', run: () => openShortcuts()},
 ];
 
 const STARTER_COMMANDS = [
@@ -3542,6 +3594,9 @@ async function boot() {
   renderComposerControls();
   renderProjectMenu();
   applyConciseState();
+  if (!localStorage.getItem('thechambers-help-seen')) {
+    setTimeout(() => openHelp(), 900);
+  }
 
   try {
     await loadHealth();
