@@ -31,6 +31,8 @@
   },
   "files": [
     "bin",
+    "plugins",
+    "providers",
     "public",
     "server.mjs",
     "tools",

@@ -3383,6 +3383,9 @@ function openSettings() {
           });
         } else if (name === 'about') {
           pane.innerHTML = `
+            <div class="brand-stage" aria-hidden="true">
+              <span class="brand-emblem"><img src="/logo-512.png" alt="" /></span>
+            </div>
             <h3>TheChambers</h3>
             <p>Command Code from your phone, over Tailscale.</p>
             <p class="meta">Unofficial personal project. Not affiliated with or supported by Command
@@ -3431,7 +3434,9 @@ function openCredits() {
     width: 520,
     content: `
       <div class="credits">
-        <img class="credits-logo" src="/logo-192.png" alt="" />
+        <div class="brand-stage" aria-hidden="true">
+          <span class="brand-emblem"><img src="/logo-512.png" alt="" /></span>
+        </div>
         <h3>TheChambers</h3>
         <p class="credits-version">Version ${esc(version)}</p>
         <p>Created by <b>${esc(author)}</b>.</p>

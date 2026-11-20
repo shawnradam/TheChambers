@@ -96,6 +96,7 @@ fs.mkdirSync(UPLOAD_DIR, {recursive: true});
 // A log the launcher window cannot show: the server often runs hidden, and a crash there used to
 // leave the phone with a bare "network error" and nothing to read.
 const LOG_FILE = path.join(CONFIG_DIR, 'server.log');
+const LOCK_FILE = path.join(CONFIG_DIR, 'server.pid');
 
 function logLine(message) {
   const line = `${new Date().toISOString()} ${message}\n`;
@@ -552,23 +553,17 @@ function sendEvent(res, payload) {
   }
 }
 
-function parseCookies(header) {
-  const out = {};
-  if (!header) return out;
+function isAuthed(req) {
+  const header = req.headers.cookie || '';
   for (const part of header.split(';')) {
     const i = part.indexOf('=');
-    if (i < 0) continue;
-    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i < 0 || part.slice(0, i).trim() !== COOKIE_NAME) continue;
+    // Session tokens use only URL-safe characters when written to the cookie.
+    const a = Buffer.from(part.slice(i + 1).trim());
+    const b = Buffer.from(SESSION_TOKEN);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
   }
-  return out;
-}
-
-function isAuthed(req) {
-  const token = parseCookies(req.headers.cookie)[COOKIE_NAME];
-  if (!token) return false;
-  const a = Buffer.from(token);
-  const b = Buffer.from(SESSION_TOKEN);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  return false;
 }
 
 function readJson(req, limit = 1 << 20) {
@@ -1248,7 +1243,12 @@ async function dispatchPlugin(req, res, url) {
 // ---------------------------------------------------------------------------
 
 const handler = async (req, res) => {
-  const url = new URL(req.url, 'http://localhost');
+  let url;
+  try {
+    url = new URL(req.url, 'http://localhost');
+  } catch {
+    return json(res, 400, {error: 'Invalid request URL.'});
+  }
   const pathname = url.pathname;
   const ip = req.socket.remoteAddress || 'unknown';
 
@@ -1278,6 +1278,9 @@ const handler = async (req, res) => {
     if (req.method === 'POST' && pathname === '/api/login') {
       if (!loginAllowed(ip)) return json(res, 429, {error: 'Too many attempts. Wait ten minutes.'});
       const body = await readJson(req);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return json(res, 400, {error: 'Expected a JSON object.'});
+      }
       const supplied = typeof body.password === 'string' ? body.password : '';
       const a = Buffer.from(supplied);
       const b = Buffer.from(PASSWORD);
@@ -2030,6 +2033,50 @@ function resolveHost() {
 
 const HOST = resolveHost();
 const servers = [];
+
+// Every instance loads conversations.json into memory at startup, so a second server quietly
+// serves a stale chat list and can overwrite the first one's saves when it persists. A pid lock
+// keeps one owner: a stale lock (dead pid) is taken over, a live one stops the start.
+function lockHolder() {
+  try {
+    const record = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+    if (!record || !record.pid || record.pid === process.pid) return null;
+    try {
+      process.kill(record.pid, 0);
+      return record;
+    } catch (err) {
+      if (err.code === 'EPERM') return record;
+      try {
+        fs.unlinkSync(LOCK_FILE);
+      } catch {
+        /* a lock we cannot remove is harmless: it is stale */
+      }
+      return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+function releaseLock() {
+  try {
+    const record = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+    if (record && record.pid === process.pid) fs.unlinkSync(LOCK_FILE);
+  } catch {
+    /* never let lock cleanup break shutdown */
+  }
+}
+
+const holder = lockHolder();
+if (holder) {
+  console.error(
+    `[thechambers] Another server is already running (pid ${holder.pid} on port ${holder.port}). ` +
+      'Stop it first, or the two will fight over the same conversations. Run: thechambers stop',
+  );
+  process.exit(1);
+}
+fs.writeFileSync(LOCK_FILE, JSON.stringify({pid: process.pid, port: PORT, host: HOST}));
+process.on('exit', releaseLock);
 
 if (HOST !== '127.0.0.1' && HOST !== tailscaleIp()) {
   console.warn(

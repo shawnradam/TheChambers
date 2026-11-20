@@ -50,6 +50,10 @@ Four static files, no framework, no build step. `index.html` holds the markup an
 
 ## Changelog
 
+### 2026-11-21
+- The login screen, About pane, and Credits use the original circuit-board mark with a blue bevel,
+  angled face, and soft shadow.
+
 ### 2026-11-20 — what Steer costs, and a steer that never went out
 - Fixed: a steer issued when the turn had already finished set a pending message that nothing would
   ever release, so it was silently never sent (`/api/stop` returned 404 and the message sat there).

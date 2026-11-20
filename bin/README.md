@@ -9,7 +9,7 @@ One file, `bin/thechambers.mjs`, identical on Windows, macOS and Linux. Run it w
 | --- | --- |
 | `thechambers` / `start` | resolve Tailscale → probe port → validate workspace → exec `server.mjs` with stdio inherited |
 | `status` | `GET /health`; prints version, commit, workspace, turns in flight, phone and desktop URLs |
-| `stop` | finds the listener (`netstat` on Windows, `lsof` elsewhere) and terminates that process |
+| `stop` | checks the listener against the TheChambers PID record before terminating it |
 | `doctor` | node ≥ 22, the agent CLI, Tailscale, password file, secret, port |
 | `providers` | adapters with availability and the active one |
 | `version` | version, short commit, author |

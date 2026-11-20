@@ -175,7 +175,7 @@ function usage() {
 usage:
   thechambers [start] [options]   start the server (default command)
   thechambers status              is it running, and on which address
-  thechambers stop                stop the process listening on the port
+  thechambers stop                stop the verified TheChambers process
   thechambers doctor              check node, the CLI, Tailscale, the port
   thechambers providers           list agent adapters and which is active
   thechambers version             print the version, commit and author
@@ -287,6 +287,16 @@ function stop() {
   const pid = pidOnPort(DEFAULT_PORT);
   if (!pid) {
     console.log(`thechambers: nothing is listening on port ${DEFAULT_PORT}`);
+    return 1;
+  }
+  let owner;
+  try {
+    owner = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, 'server.pid'), 'utf8'));
+  } catch {
+    // A missing or unreadable record cannot identify the listener.
+  }
+  if (owner?.pid !== pid || owner.port !== DEFAULT_PORT) {
+    console.error(`thechambers: could not verify that pid ${pid} belongs to TheChambers`);
     return 1;
   }
   try {

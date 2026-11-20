@@ -2337,11 +2337,57 @@ a:hover {
   padding: 4px 0 14px;
 }
 
-.credits-logo {
-  width: 56px;
-  height: 56px;
-  object-fit: contain;
-  margin-bottom: 4px;
+.brand-stage {
+  --emblem-size: clamp(90px, 25vw, 114px);
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-height: calc(var(--emblem-size) + 34px);
+  margin-bottom: 10px;
+  background: radial-gradient(ellipse 100px 68px at 50% 48%, #194ebb46, transparent);
+  perspective: 480px;
+}
+
+.brand-stage::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  bottom: 5px;
+  width: calc(var(--emblem-size) * 1.1);
+  height: 25px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse, #020617d9, #13387766 42%, transparent 72%);
+}
+
+.brand-emblem {
+  position: relative;
+  display: block;
+  width: var(--emblem-size);
+  aspect-ratio: 1;
+  transform: rotateX(10deg) rotateY(-19deg) rotateZ(-8deg);
+  filter: drop-shadow(1px 1px 0 #458cff)
+    drop-shadow(2px 2px 0 #154a9f)
+    drop-shadow(3px 3px 0 #10285b)
+    drop-shadow(4px 4px 0 #060e23)
+    drop-shadow(0 7px 11px #020617a6);
+}
+
+.brand-emblem img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: brightness(1.7) saturate(1.25);
+}
+
+.brand-emblem::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(138deg, #9bdcff9e, #5f9eff20 40%, transparent 58%, #2e83ef65);
+  mask: url("/logo-512.png") center / contain no-repeat;
+  pointer-events: none;
 }
 
 .credits h3 {
@@ -2671,7 +2717,7 @@ a:hover {
   justify-content: center;
   min-height: 100dvh;
   padding: 24px;
-  background: var(--bg);
+  background: radial-gradient(ellipse 440px 300px at 50% 43%, #101d3d, transparent 80%), var(--bg);
 }
 
 .login-box {
@@ -2683,11 +2729,12 @@ a:hover {
   text-align: center;
 }
 
-.login-logo {
-  width: 56px;
-  height: 56px;
-  object-fit: contain;
-  margin-bottom: 14px;
+.brand-stage--login {
+  --emblem-size: clamp(122px, 43vw, 158px);
+  width: 100%;
+  margin-bottom: 16px;
+  background-size: 125% 125%;
+  background-position: center;
 }
 
 .login-box h1 {

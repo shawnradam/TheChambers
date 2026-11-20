@@ -92,6 +92,10 @@ sessions, little on large refactors — the agent's system prompt is outside our
 
 ## Changelog
 
+### 2026-11-21
+- Fixed malformed request URLs and non-object login bodies to return HTTP 400.
+- Authentication reads the session cookie directly, so unrelated cookies do not affect sign-in.
+
 ### 2026-11-20 — Hold and Steer, one turn per session
 - Fixed: `/api/turn` accepted a second concurrent turn for the same conversation and overwrote the
   `running` record, orphaning the first child (un-stoppable) and letting two agent processes write one

@@ -3,6 +3,19 @@
 Newest first. Each entry names the area, what changed, why, and how it was verified. Area docs carry
 their own smaller changelogs; this file is the whole story in order.
 
+## 2026-11-21
+
+### interface
+- Added a dimensional logo treatment to the login screen, About pane, and Credits.
+
+### server and launcher
+- Fixed handling for malformed URLs, login bodies, and unrelated cookies.
+- Checked the listener against the server PID record before stopping it.
+
+### packaging
+- Fixed: the npm package includes the provider and plugin modules required by the server and
+  verification scripts.
+
 ## 2026-11-20
 
 ### interface — what Steer costs, and a steer that never went out
