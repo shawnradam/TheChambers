@@ -6,12 +6,14 @@ their own smaller changelogs; this file is the whole story in order.
 ## 2026-11-20
 
 ### interface — type scale and menu icon
-- Changed: the menu button is three vertical strokes (butt caps, 20px) instead of the horizontal
-  hamburger; the three segments stay separate at phone size
+- Changed: the menu button is a bullet-list icon (three rows of dot + horizontal bar, left-aligned,
+  20px) instead of the horizontal hamburger or vertical strokes
 - Changed: baseline type and controls grew ~1px — sidebar items 15px, labels 14px, title 16px,
   menu rows 34px, icon buttons 30px, composer 15px, chips 13.5px
-- Why: the interface is used at arm's length on a phone; the old scale was desktop-tuned
-- Verified: 8× zoom shows three distinct strokes; 412px drawer and empty state reviewed
+- Why: the interface is used at arm's length on a phone, and the requested reference is a bulleted
+  list, not three bars
+- Verified: 8× zoom shows three dot+bar rows evenly spaced and centred; 412px drawer and empty state
+  reviewed
 
 ## 2026-11-17
 

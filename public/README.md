@@ -32,12 +32,14 @@ Four static files, no framework, no build step. `index.html` holds the markup an
 ## Changelog
 
 ### 2026-11-20 — type scale and the menu icon
-- Changed: menu button is three vertical strokes instead of the horizontal hamburger; butt caps and
-  a 20px box so the three segments stay distinct at phone size
+- Changed: menu button is a bullet-list icon — three rows of a filled dot plus a horizontal bar,
+  left-aligned, 20px box — instead of the horizontal hamburger
 - Changed: baseline type and controls grew about 1px — sidebar items 15px, section labels 14px,
   title 16px, menu rows 34px tall, icon buttons 30px, composer 15px, chips 13.5px
-- Why: the app is read on a phone at arm's length; the old sizes were tuned for a desktop window
-- Verified: 8× zoom shows three separated strokes; drawer and empty state checked at 412px
+- Why: the app is read on a phone at arm's length; the old sizes were tuned for a desktop window,
+  and the reference for the menu glyph is a bulleted list, not three bars
+- Verified: 8× zoom shows three dot+bar rows, evenly spaced and centred; drawer and empty state
+  checked at 412px
 
 ### 2026-11-14 — 69319bd
 - Changed: the version line in the ⋯ menu opens a Credits popup instead of GitHub
