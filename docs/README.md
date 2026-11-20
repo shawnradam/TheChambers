@@ -50,12 +50,13 @@ Area docs are the working set while things are still moving. When the project is
 1. The area docs are **merged into one full document** — `docs/THE-CHAMBERS.md` — with sections in
    this order: what it is, install, use, agents, interface, server, CLI, checks, security, licence.
 2. Each area's changelog entries are folded into that document's single changelog, in date order.
-3. The area files stay in place next to their code as references; the merged document is the one a
-   new reader opens first, and the root README links to it.
+3. The area files stay in place next to their code as references; the merged document is private —
+   git-ignored, never published — and the root README points at the area docs instead.
 4. Nothing is deleted until the merged document has been read once and verified against the code.
 
-**Status:** `docs/THE-CHAMBERS.md` exists and is the first thing a reader should open; the area docs
-remain next to their code. Future changes update the area doc and the merged document together.
+**Status:** the merged document exists locally as `docs/THE-CHAMBERS.md` and is deliberately **not
+published** — it is git-ignored and stays on the author's machine. The published repository carries
+the area docs only. Future changes update the area doc and the local merged document together.
 
 Until that point, do not merge early: a combined doc that is wrong in three places is worse than
 five small docs that are each right.

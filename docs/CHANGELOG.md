@@ -6,10 +6,11 @@ their own smaller changelogs; this file is the whole story in order.
 ## 2026-11-17
 
 ### consolidation — docs
-- Added: `docs/THE-CHAMBERS.md`, one document covering install, use, agents, plugins, server, CLI,
-  checks, security and licence; README links it first
-- Why: the per-area docs are for working; one document is for reading
-- Rule: area docs stay next to their code and are updated together with the merged document
+- Added: `docs/THE-CHAMBERS.md`, one local document covering install, use, agents, plugins, server,
+  CLI, checks, security and licence
+- Changed: that document is **not published** — it is git-ignored and kept on the author's machine;
+  the repository carries the area docs only
+- Why: the per-area docs are for working; the merged one is private reference material
 
 ### plugins — extension system
 - Added: `plugins/` (registry, `_template`, manager, trust dialog), `tools/plugin-check.mjs`, rail
