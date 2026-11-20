@@ -1,6 +1,6 @@
 'use strict';
 
-// TheChambers client. Layout and interaction model follow prior art; the data comes from
+// TheChambers client. The layout is this project's own; the data comes from
 // Command Code's own sessions through the local server.
 
 const $ = (selector) => document.querySelector(selector);
@@ -3198,7 +3198,7 @@ function openSettings() {
             <p>Command Code from your phone, over Tailscale.</p>
             <p class="meta">Unofficial personal project. Not affiliated with or supported by Command
             Code, and it has nothing to do with their Telegram remote control — I don't use
-            Telegram. The interface is inspired by prior art; credit for the design is theirs.</p>
+            Telegram. </p>
             <div class="kv"><span>Version</span><b>${esc(state.health ? state.health.version : '—')}</b></div>
             <div class="kv"><span>Author</span><b>${esc((state.health && state.health.author) || 'Shawn Radam')}</b></div>
             <div class="kv"><span>Founder</span><b>${esc((state.health && state.health.founder) || 'Shawn Radam')}</b></div>
@@ -3251,10 +3251,9 @@ function openCredits() {
       </div>
       <div class="kv"><span>Source</span><b><a href="https://github.com/shawnradam/TheChambers" target="_blank" rel="noreferrer noopener">github.com/shawnradam/TheChambers</a></b></div>
       <div class="kv"><span>Agent</span><b>Command Code — commandcode.ai</b></div>
-      <div class="kv"><span>Design</span><b>Inspired by prior art</b></div>
       <div class="kv"><span>Interface</span><b>player only — no agent code is bundled</b></div>
       <p class="meta">Unofficial personal project. Not affiliated with, endorsed by, or supported by
-      Command Code or prior art, and unrelated to Command Code's own Telegram remote control.</p>`,
+      Command Code, and unrelated to Command Code's own Telegram remote control.</p>`,
   });
 }
 

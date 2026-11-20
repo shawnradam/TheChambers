@@ -71,7 +71,7 @@ their own smaller changelogs; this file is the whole story in order.
 
 ### ee4e8b2 — CLI, licence, disclaimer
 - Added: `thechambers status|stop|doctor|version`, GPL-3.0-or-later `LICENSE`, `CONTRIBUTING.md`
-- Changed: README opens with the unofficial/prior art/Telegram notice
+- Changed: README opens with the unofficial/Telegram notice
 - Verified on Windows: doctor all-ok, stop kills a scratch instance
 
 ### 90ff1fd — sessions
@@ -91,5 +91,5 @@ their own smaller changelogs; this file is the whole story in order.
 - Why: the public repository is the player, not the workshop
 
 ### 7677701 / f775f71 / 972d407 — brand and interface
-- Logo in login, header, favicon, manifest; prior art-parity shell; collapsed-sidebar fix
+- Logo in login, header, favicon, manifest; three-column shell with a workspace rail; collapsed-sidebar fix
 - Why: a phone front end that looks and behaves like the tool it mirrors

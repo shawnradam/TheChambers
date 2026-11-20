@@ -8,7 +8,7 @@ its sessions live, and how a transcript is read.
 - `providers/_template.mjs` — copy this to start a new adapter.
 - `providers/index.mjs` — the registry: built-ins plus drop-ins.
 
-**This is not affiliated with Command Code or prior art.** Adding an adapter does not imply
+**This is not affiliated with Command Code.** Adding an adapter does not imply
 endorsement by that agent's vendor.
 
 ---

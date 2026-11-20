@@ -1,7 +1,7 @@
 {
   "name": "thechambers",
   "version": "1.2.0",
-  "description": "Command Code from your phone, over Tailscale. An unofficial, personal project inspired by prior art.",
+  "description": "Command Code from your phone, over Tailscale. An unofficial personal project.",
   "type": "module",
   "license": "GPL-3.0-or-later",
   "author": "Shawn Radam",
@@ -15,8 +15,7 @@
     "coding-agent",
     "tailscale",
     "remote",
-    "phone",
-    "prior art"
+    "phone"
   ],
   "bin": {
     "thechambers": "bin/thechambers.mjs"

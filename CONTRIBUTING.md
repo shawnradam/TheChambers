@@ -5,7 +5,7 @@ contributions are the easiest to review.
 
 ## Before you start
 
-- **Not official.** TheChambers is not affiliated with Command Code or prior art. Please don't
+- **Not official.** TheChambers is not affiliated with Command Code. Please don't
   report its bugs to either project.
 - **Open an issue first** for anything larger than a typo: describe what you expected, what
   happened, and the platform (`thechambers doctor` prints most of what is needed).

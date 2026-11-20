@@ -60,4 +60,4 @@ Four static files, no framework, no build step. `index.html` holds the markup an
 
 ### 2026-11-13 — 972d407
 - Added: the rail panels, session panel, settings dialog, search, toasts, modals
-- Why: parity with the prior art layout this interface follows
+- Why: a three-column shell with a rail of workspace panels

@@ -191,7 +191,7 @@ start options:
 environment:
   THECHAMBERS_PORT, THECHAMBERS_HOST, THECHAMBERS_WORKSPACE, THECHAMBERS_PROVIDER, CMDC_ENTRY
 
-Not affiliated with Command Code or prior art.
+Not affiliated with Command Code.
 ${COPYRIGHT}. Source: ${SOURCE_URL}`);
 }
 

@@ -4,23 +4,19 @@
 >
 > TheChambers is a **personal project**, not an official terminal or client for
 > [Command Code](https://commandcode.ai). It is **not affiliated with, endorsed by, or supported
-> by** Command Code or prior art.
+> by** Command Code.
 >
 > Command Code already has its own remote control, and it runs on Telegram. **I don't use
 > Telegram, and this project has nothing to do with that one.** I built TheChambers for my own
 > projects, on my own machines, and I am sharing it in case it saves someone else the same work.
 > Please don't report problems with it to the Command Code team.
->
-> The interface is **inspired by [prior art](https://github.com)**, which
-> I love using every day — the layout, the panels and the interaction model are modelled on it.
-> All credit for that design is theirs. This is a reimplementation for Command Code, not a fork.
 
 **Documentation:** area references live next to their code — `server.md`, `bin/README.md`,
 `public/README.md`, `providers/README.md`, `plugins/README.md`, `tools/README.md` — with the rule that
 keeps them current in [docs/README.md](./docs/README.md) and the history in
 [docs/CHANGELOG.md](./docs/CHANGELOG.md).
 
-Formally known as cmdc. The workflow is adapted from prior art, rebuilt from scratch for
+Formally known as cmdc. Rebuilt from scratch for
 [Command Code](https://commandcode.ai).
 
 **Drive Command Code from your phone.** TheChambers is a small, dependency-free web app that runs
@@ -201,7 +197,7 @@ because the session cookie is derived from the password as well as the server se
 
 ## Using it
 
-The interface follows prior art's layout: a 280px sidebar, a 48px topbar, a centered hero on an
+The interface: a 280px sidebar, a 48px topbar, a centered hero on an
 empty session, one composer that follows you into the conversation, and a 44px rail of workspace
 panels on the right. On a phone the sidebar becomes a drawer and the rail moves into a panel menu.
 
@@ -252,7 +248,7 @@ extra confirmation in the web UI.
 
 ### Picker
 
-The composer has the same three triggers as prior art:
+The composer has three triggers:
 
 - **`/`** opens the command menu. `↑`/`↓` moves, `Enter` or `Tab` selects, `Esc` closes. Commands
   sourced **APP** run in the app (`/new`, `/model`, `/mode`, `/plan`, `/rename`, `/export`,
@@ -298,7 +294,7 @@ and `/rewind` all see them.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `THECHAMBERS_HOST` | Tailscale IPv4, else `127.0.0.1` | Address to bind |
-| `THECHAMBERS_PORT` | `3002` | Port to bind (3000 is a typical dev server, 3001 prior art) |
+| `THECHAMBERS_PORT` | `3002` | Port to bind (3000 is often a dev server) |
 | `THECHAMBERS_WORKSPACE` | home directory | Default folder for new chats |
 | `THECHAMBERS_MAX_TURNS` | `60` | `--max-turns` passed to headless runs |
 | `CMDC_ENTRY` | auto-detected | Path to `command-code/dist/index.mjs` if it is not in the global npm prefix |
@@ -465,6 +461,5 @@ TheChambers is free software under the **GNU General Public License v3.0 or late
 [LICENSE](./LICENSE). You can use it, study it, change it and share it; if you distribute a modified
 version, it stays under the same licence. Copyright © 2026 Shawn Radam.
 
-This project is not affiliated with Command Code or prior art. Command Code is a separate product
-with its own terms; this project only drives the CLI you already installed and signed in. The
-interface design is inspired by prior art, and credit for it belongs there.
+This project is not affiliated with Command Code. Command Code is a separate product
+with its own terms; this project only drives the CLI you already installed and signed in.
