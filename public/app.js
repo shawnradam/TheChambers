@@ -54,9 +54,11 @@ const els = {
   input: $('#input'),
   send: $('#send'),
   stop: $('#stop'),
-  docket: $('#docket'),
-  docketCount: $('#docket-count'),
-  gavel: $('#gavel'),
+  hold: $('#hold'),
+  holdCount: $('#hold-count'),
+  steer: $('#steer'),
+  turnActions: $('#turn-actions'),
+  held: $('#held'),
   attach: $('#attach'),
   fileInput: $('#file-input'),
   attachments: $('#attachments'),
@@ -94,7 +96,9 @@ const state = {
   filter: '',
   activeId: null,
   busy: false,
-  docket: [],
+  sending: false,
+  hold: [],
+  steerPending: null,
   pollTimer: null,
   signature: '',
   messages: [],
@@ -1388,96 +1392,111 @@ function setBusy(busy) {
   state.busy = busy;
   els.send.hidden = busy;
   els.stop.hidden = !busy;
-  els.docket.hidden = !busy;
-  els.gavel.hidden = !busy;
+  els.turnActions.hidden = !busy;
   els.app.classList.toggle('working', busy);
-  updateDocketLabel();
   updateSendState();
 }
 
-// While a turn runs the composer offers two choices. The docket holds text and hears it as soon as
-// this turn ends; the gavel stops the turn and redirects it now, in the same session.
-function updateDocketLabel() {
-  const count = state.docket.length;
-  els.docketCount.hidden = count === 0;
-  els.docketCount.textContent = String(count);
-  els.docket.classList.toggle('filed', count > 0);
-  els.docket.title = count
-    ? `${count} filed — tap to review`
-    : 'File this for after the current turn';
+// While a turn runs, typed text has two destinations, in one control. Hold keeps it and sends it when
+// the turn ends; Steer appears beside it the moment there is text and redirects the running turn
+// instead. Held messages wait in the strip above the composer, each with its own Steer action.
+function updateHoldLabel() {
+  const count = state.hold.length;
+  els.holdCount.hidden = count === 0;
+  els.holdCount.textContent = String(count);
+  els.hold.classList.toggle('filled', count > 0);
+  renderHeld();
 }
 
-function fileDocket() {
+function renderHeld() {
+  const held = state.hold;
+  els.held.hidden = held.length === 0;
+  els.held.textContent = '';
+  held.forEach((text, index) => {
+    const row = document.createElement('div');
+    row.className = 'held-row';
+
+    const label = document.createElement('span');
+    label.className = 'held-text';
+    label.textContent = text.replace(/\s+/g, ' ').slice(0, 90);
+
+    const steer = document.createElement('button');
+    steer.type = 'button';
+    steer.className = 'held-action steer';
+    steer.textContent = 'Steer';
+    steer.title = 'Send this now, steering the running turn';
+    steer.addEventListener('click', () => {
+      state.hold.splice(index, 1);
+      updateHoldLabel();
+      steerText(text);
+    });
+
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.className = 'held-action drop';
+    drop.textContent = '×';
+    drop.title = 'Remove from the hold';
+    drop.addEventListener('click', () => {
+      state.hold.splice(index, 1);
+      updateHoldLabel();
+    });
+
+    row.append(label, steer, drop);
+    els.held.append(row);
+  });
+}
+
+function fileHold() {
   const text = els.input.value.trim();
   if (!text) return false;
-  state.docket.push(text);
+  state.hold.push(text);
   els.input.value = '';
   autoGrow();
-  updateDocketLabel();
   updateSendState();
-  toast(state.docket.length === 1 ? 'Filed to the docket.' : `Docket holds ${state.docket.length}.`);
+  updateHoldLabel();
+  toast(state.hold.length === 1 ? 'Held for after this turn.' : `${state.hold.length} held for after this turn.`);
   return true;
 }
 
-function openDocket() {
-  floatingMenu(
-    els.docket,
-    (menu) => {
-      if (!state.docket.length) {
-        menu.append(menuItem('Nothing filed', {iconName: 'book'}));
-        return;
-      }
-      state.docket.forEach((text, index) => {
-        menu.append(
-          menuItem(`${index + 1}. ${text.replace(/\s+/g, ' ').slice(0, 48)}`, {
-            iconName: 'x',
-            onClick: () => {
-              state.docket.splice(index, 1);
-              updateDocketLabel();
-              toast('Removed from the docket.');
-            },
-          }),
-        );
-      });
-      menu.append(
-        menuSep(),
-        menuItem('Clear the docket', {
-          iconName: 'refresh',
-          onClick: () => {
-            state.docket = [];
-            updateDocketLabel();
-            toast('Docket cleared.');
-          },
-        }),
-      );
-    },
-    {width: 260},
-  );
-}
-
-function gavelMessage() {
-  const text = els.input.value.trim();
+// Steering is a promise, not a poll: hold the text, stop the turn, and send it the moment that turn's
+// stream closes. If the turn finishes on its own first, the same path sends it — either way the text
+// is never lost, and a second turn can never be started on top of the first.
+function steerText(text) {
   if (!text) return;
+  state.steerPending = text;
   els.input.value = '';
   autoGrow();
   updateSendState();
+  toast('Steering — stopping this turn, then sending that.');
   stopTurn();
-  toast('Gavel down — stopping, then sending this instead.');
-  const started = Date.now();
-  const wait = setInterval(() => {
-    if (!state.busy || Date.now() - started > 8000) {
-      clearInterval(wait);
-      sendTurn(text);
-    }
-  }, 250);
+}
+
+function steerInput() {
+  const text = els.input.value.trim();
+  if (text) steerText(text);
 }
 
 function updateSendState() {
-  els.send.disabled = state.busy || (!els.input.value.trim() && !state.attachments.length);
   const hasText = Boolean(els.input.value.trim());
-  // The docket is never disabled: with an empty composer it opens the filed list. Only the gavel
-  // needs something to send.
-  els.gavel.disabled = !hasText;
+  els.send.disabled = state.busy || (!hasText && !state.attachments.length);
+  els.hold.disabled = !hasText;
+  // Steer only exists while a turn is running and there is something to steer with.
+  els.steer.hidden = !(state.busy && hasText);
+  els.steer.disabled = !hasText;
+  els.turnActions.classList.toggle('split', !els.steer.hidden);
+}
+
+// Every turn goes through here, so two can never overlap: if one is in flight the message is held
+// instead of lost.
+function dispatchTurn(text) {
+  if (state.sending) {
+    state.hold.unshift(text);
+    updateHoldLabel();
+    toast('One turn at a time — held it instead.');
+    return;
+  }
+  state.sending = true;
+  sendTurn(text);
 }
 
 // ---------------------------------------------------------------------------
@@ -1621,12 +1640,18 @@ async function sendTurn(text) {
     updateContextRing();
     renderSessionCard();
 
-    // The docket is heard: the next item goes out as soon as the turn that held it is done.
-    if (state.docket.length) {
-      const next = state.docket.shift();
-      updateDocketLabel();
-      toast(state.docket.length ? `Raising the next item — ${state.docket.length} still filed.` : 'Raising the next item from the docket.');
-      setTimeout(() => sendTurn(next), 400);
+    // The turn that held these is over, so release them in order: a steer first (that is what the
+    // user asked for most recently), then the held messages, one turn at a time.
+    state.sending = false;
+    if (state.steerPending) {
+      const next = state.steerPending;
+      state.steerPending = null;
+      dispatchTurn(next);
+    } else if (state.hold.length) {
+      const next = state.hold.shift();
+      updateHoldLabel();
+      toast(state.hold.length ? `Sending the held message — ${state.hold.length} still held.` : 'Sending the held message.');
+      dispatchTurn(next);
     }
   }
 }
@@ -3384,11 +3409,12 @@ function openHelp() {
       means another writer (usually that terminal) is active; don't type in both at once.</p>
 
       <h3>While a turn is running</h3>
-      <div class="kv"><span>Docket</span><b>files your text; it is heard when the turn ends</b></div>
-      <div class="kv"><span>Gavel</span><b>stops the turn and sends your text instead, same session</b></div>
-      <p class="meta">Enter mid-turn files to the docket; Ctrl+Enter is the gavel. Click Docket with an
-      empty composer to review, drop or clear what is filed. The header spinner means the machine is
-      working, even when the thread is scrolled away.</p>
+      <div class="kv"><span>Hold</span><b>keeps your message and sends it when this turn ends</b></div>
+      <div class="kv"><span>Steer</span><b>appears beside Hold once you type: stops the turn and sends it now</b></div>
+      <p class="meta">Held messages wait in a strip above the composer — each one has its own
+      <b>Steer</b> to promote it into the running turn, and an × to drop it. Enter holds, Ctrl+Enter
+      steers, and only one turn ever runs in a session, so nothing is started twice. The header spinner
+      means the machine is working, even when the thread is scrolled away.</p>
 
       <h3>Modes</h3>
       <div class="kv"><span>Read-only</span><b>can read and explain; writes and commands are denied</b></div>
@@ -3408,6 +3434,9 @@ function openHelp() {
       <code>providers/</code> — one file per CLI agent — and extra ones load from
       <code>~/.config/thechambers/providers/</code>. <code>thechambers providers</code> lists them
       with availability.</p>
+      <p class="meta">This is a <b>browser-side CLI</b>: the browser is only the client, and the
+      agent CLI runs on your own machine. That is the reverse of a "browser CLI", which drives a
+      browser. The term and its tests are in <code>docs/BROWSER-SIDE-CLI.md</code>.</p>
 
       <h3>If something looks wrong</h3>
       <div class="kv"><span>Address</span><b>this page must be opened over Tailscale, not the LAN</b></div>
@@ -3423,8 +3452,8 @@ function openShortcuts() {
     width: 480,
     content: `
       <div class="shortcut"><span>Send message</span><kbd>Enter</kbd></div>
-      <div class="shortcut"><span>File to the docket (mid-turn)</span><kbd>Enter</kbd></div>
-      <div class="shortcut"><span>Gavel: stop and redirect (mid-turn)</span><kbd>Ctrl + Enter</kbd></div>
+      <div class="shortcut"><span>Hold the message (mid-turn)</span><kbd>Enter</kbd></div>
+      <div class="shortcut"><span>Steer: stop and send now (mid-turn)</span><kbd>Ctrl + Enter</kbd></div>
       <div class="shortcut"><span>New line</span><kbd>Shift + Enter</kbd></div>
       <div class="shortcut"><span>New session</span><kbd>Ctrl + Shift + N</kbd></div>
       <div class="shortcut"><span>Search chats and sessions</span><kbd>Ctrl + K</kbd></div>
@@ -3500,16 +3529,20 @@ const APP_COMMANDS = [
   {name: '/usage', desc: 'Open context and usage', source: 'APP', run: () => openPanel('context')},
   {name: '/stop', desc: 'Stop the running turn', source: 'APP', run: () => stopTurn()},
   {
-    name: '/docket',
-    desc: 'File this for after the turn, or review what is filed',
+    name: '/hold',
+    desc: 'Hold this message and send it when the turn ends',
     source: 'APP',
     run: () => {
-      if (!fileDocket()) openDocket();
+      if (!state.busy) {
+        toast('Nothing is running — just send it.');
+        return;
+      }
+      if (!fileHold()) toast('Type the message first.');
     },
   },
   {
-    name: '/gavel',
-    desc: 'Stop the turn and send this instead',
+    name: '/steer',
+    desc: 'Stop the running turn and send this message instead',
     source: 'APP',
     run: () => {
       if (!state.busy) {
@@ -3517,10 +3550,10 @@ const APP_COMMANDS = [
         return;
       }
       if (!els.input.value.trim()) {
-        toast('Type what to send, then run this again.');
+        toast('Type what to steer with, then run this again.');
         return;
       }
-      gavelMessage();
+      steerInput();
     },
   },
   {name: '/goal', desc: 'Start a goal with the next message', source: 'APP', run: () => goalToggle()},
@@ -3943,9 +3976,9 @@ els.composer.addEventListener('submit', (event) => {
   const typed = els.input.value.trim();
   const files = state.attachments.slice();
   if (!typed && !files.length) return;
-  // Pressing Enter mid-turn queues the message rather than doing nothing.
+  // Pressing Enter mid-turn holds the message rather than dropping it. Steer is the deliberate one.
   if (state.busy) {
-    fileDocket();
+    fileHold();
     return;
   }
 
@@ -3962,7 +3995,7 @@ els.composer.addEventListener('submit', (event) => {
   els.input.value = '';
   autoGrow();
   updateSendState();
-  sendTurn(text);
+  dispatchTurn(text);
 });
 
 els.input.addEventListener('input', () => {
@@ -3979,10 +4012,10 @@ els.input.addEventListener('keyup', (event) => {
 els.input.addEventListener('keydown', (event) => {
   if (handlePickerKeys(event)) return;
   const coarse = window.matchMedia('(pointer: coarse)').matches;
-  // Ctrl+Enter is the gavel: interrupting a running turn should take a deliberate chord.
+  // Ctrl+Enter steers: redirecting a running turn should take a deliberate chord. Enter alone holds.
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && state.busy) {
     event.preventDefault();
-    gavelMessage();
+    steerInput();
     return;
   }
   if (event.key === 'Enter' && !event.shiftKey && !coarse) {
@@ -3993,11 +4026,8 @@ els.input.addEventListener('keydown', (event) => {
 });
 
 els.stop.addEventListener('click', stopTurn);
-els.docket.addEventListener('click', () => {
-  if (els.input.value.trim()) fileDocket();
-  else openDocket();
-});
-els.gavel.addEventListener('click', gavelMessage);
+els.hold.addEventListener('click', fileHold);
+els.steer.addEventListener('click', steerInput);
 
 els.suggestions.addEventListener('click', (event) => {
   const chip = event.target.closest('.chip');

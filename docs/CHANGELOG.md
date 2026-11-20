@@ -5,6 +5,31 @@ their own smaller changelogs; this file is the whole story in order.
 
 ## 2026-11-20
 
+### server + interface — Hold and Steer, and one turn per session
+- Fixed: a second concurrent turn in the same conversation was accepted and overwrote the `running`
+  record, so a second agent process wrote the same transcript and the earlier child could no longer be
+  stopped by `/api/stop`. `/api/turn` now answers 409 while a turn runs
+- Changed: Docket and Gavel became **Hold** and **Steer**, one joined segmented control. Steer appears
+  as soon as there is text while a turn runs, matching the Codex arrangement: hold by default, steer
+  deliberately (Ctrl+Enter)
+- Added: a held-message strip above the composer; each row carries its own Steer and an ×
+- Fixed: steering polled for up to 8s and could race the held drain into a second POST. Steering is now
+  a promise — hold the text, stop the turn, send when that turn's stream closes; steer first, then held
+  messages, in order
+- Fixed: `fileHold` never refreshed the badge or the strip, so held messages were invisible
+- Verified: double dispatch posts one turn and holds the second; steer + two held messages produce
+  `[turn 1, steer, held-1, held-2]` with four 200s; busy transitions alternate true/false four times
+  (no overlap); the composer returns to idle with the strip hidden; `tools/verify.mjs` 15/15
+
+### interface — the term this project coined
+- Added: `docs/BROWSER-SIDE-CLI.md` defines **browser-side CLI** — a CLI you drive from a browser,
+  the inverse of the established "browser CLI" (a CLI that drives a browser). Five tests, TheChambers'
+  status against each one, and the partial fifth test (only one adapter) named as outstanding work
+- Added: README section, page meta description and keywords, manifest description, help-modal line
+- Why: GitHub alone returns 27 repositories named `browsercli`, all meaning the opposite direction, so
+  the unqualified phrase is taken; the term with a side is the one worth owning
+- Verified: README renders the section, `docs/BROWSER-SIDE-CLI.md` links resolve, no code paths touched
+
 ### interface — composer polish: icons, budget, no slivers
 - Changed: Docket and Gavel are amber pills with their own icons (filed document, mallet) and the
   docket carries a count badge rather than putting the number in the label

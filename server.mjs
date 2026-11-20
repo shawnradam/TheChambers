@@ -960,6 +960,15 @@ async function startTurn(req, res) {
   }
   persist();
 
+  // One turn per session, always. A second concurrent turn would spawn another agent process writing
+  // the same transcript, and the earlier record would be overwritten — orphaning a child that
+  // /api/stop can no longer reach. The client serialises its own sends; this is the backstop.
+  if (running.has(conv.id)) {
+    return json(res, 409, {
+      error: 'A turn is already running in this session. Hold the message, or stop the turn first.',
+    });
+  }
+
   const args = PROVIDER.turnArgs({
     sessionId: conv.sessionId,
     mode,

@@ -32,18 +32,35 @@ Four static files, no framework, no build step. `index.html` holds the markup an
   wordmark while a turn is running — smaller, quieter, and driven by the same 80ms ticker — so the
   header shows this machine is busy even when the thread is scrolled away. It rests invisible when
   idle.
-- **Docket / Gavel**: while a turn runs, the composer shows both, as amber pills — an icon, the word,
-  and for the docket a count badge. *Docket* files your text and hears it as soon as the turn ends;
-  pressing it with an empty composer opens the filed list, where each item can be dropped or the whole
-  docket cleared. *Gavel* stops the turn and sends your text instead, in the same session. Enter
-  mid-turn files to the docket; **Ctrl+Enter** is the gavel. `/docket` and `/gavel` do the same from
-  the picker. Both names are the project's own — a docket is the list of matters to be heard, a gavel
-  interrupts the proceeding.
-- **On a phone** the bar is tight, so the two action pills show their icon and badge only, the model
+- **Hold / Steer**: one joined control that appears while a turn runs. *Hold* keeps your message and
+  sends it when the turn ends, carrying a count of what is waiting; *Steer* joins it the moment you
+  type — it stops the running turn and sends that message instead. Held messages wait in a strip above
+  the composer, each row with its own **Steer** to promote it and an × to drop it. Enter holds,
+  Ctrl+Enter steers, and `/hold` and `/steer` do the same from the picker.
+- **One turn per session, always**: the client sends through a single gate and the server refuses a
+  second concurrent turn on the same session with 409, so two agent processes can never write the same
+  transcript.
+- **On a phone** the bar is tight, so Hold and Steer show their icons and badge only, the model
   chip reads just the model name, and the agent dot is dropped (the label already says Plan or Build).
   Nothing is allowed to shrink to a sliver.
 
 ## Changelog
+
+### 2026-11-20 — Hold and Steer, and the end of double turns
+- Fixed: two turns could run at once in the same session. The server overwrote its `running` record
+  instead of refusing the second, so a second agent process wrote the same transcript and the first
+  became un-stoppable — the reason a click could leave the app wedged until a restart. The server now
+  answers 409, and the client sends through one gate
+- Changed: Docket and Gavel are now **Hold** and **Steer**, in one joined control. Steer appears beside
+  Hold the moment there is text (that is the Codex arrangement: hold by default, steer deliberately)
+- Added: held messages listed in a strip above the composer, each with its own Steer and an ×
+- Fixed: steering waited up to 8 seconds on a poll and could race a held send. It is now a promise:
+  hold the text, stop the turn, send when that turn's stream closes — steer first, then held messages,
+  in order
+- Fixed: `fileHold` never refreshed the count or the strip, so held messages existed but were invisible
+- Verified: a double dispatch posts one turn and holds the second; a steer plus a held message produce
+  `[turn 1, steer, held-1, held-2]` with statuses 200,200,200,200; busy transitions alternate
+  true/false four times, so two turns never overlap; the UI returns to idle with the strip hidden
 
 ### 2026-11-20 — composer polish: icons, budget, no slivers
 - Changed: Docket and Gavel are proper amber pills with their own icons — a filed document and a

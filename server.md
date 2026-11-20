@@ -66,6 +66,12 @@ Request and socket timeouts are disabled on purpose: a turn can stream for many 
 SSE heartbeat every 15s, attached to the **response** close event (not the request), which is what
 keeps long turns from being dropped by mobile networks.
 
+**One turn per session.** `running` holds one record per conversation. A second `POST /api/turn` for a
+conversation already running is refused with `409` before any headers are written — it must not spawn a
+second agent process on the same transcript, and it must not overwrite the record, because the map is
+the only handle `/api/stop` has on the child. The client serialises its sends through one gate and
+holds anything typed meanwhile, so the 409 is a backstop, not the normal path.
+
 ## Concise mode
 
 Per conversation. When on, the message is prefixed with a visible `[concise mode]` preamble aimed
@@ -85,6 +91,13 @@ sessions, little on large refactors — the agent's system prompt is outside our
 | `server.log` | request failures and uncaught exceptions (1 MB rotation) |
 
 ## Changelog
+
+### 2026-11-20 — Hold and Steer, one turn per session
+- Fixed: `/api/turn` accepted a second concurrent turn for the same conversation and overwrote the
+  `running` record, orphaning the first child (un-stoppable) and letting two agent processes write one
+  transcript. It now returns 409 before headers, and the client sends through a single gate
+- Verified: two dispatches in one tick produce one 200 and no second POST; steer plus two held messages
+  produce four sequential 200s; `tools/verify.mjs` 15/15
 
 ### 2026-11-14 — 9b647a1
 - Changed: all Command Code specifics moved to `providers/cmdc.mjs`; `/api/providers` added

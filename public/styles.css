@@ -2982,14 +2982,18 @@ a:hover {
 }
 
 @media (max-width: 520px) {
-  /* The bar runs out of room before the labels do any good, so the two turn actions keep their
-     icons and the count badge and drop the words — nothing gets crushed to a sliver. */
-  .bar-btn.action .lbl {
+  /* The bar runs out of room before the labels do any good, so Hold and Steer keep their icons and
+     the count badge and drop the words — nothing gets crushed to a sliver. */
+  .turn-actions .bar-btn.action .lbl {
     display: none;
   }
 
-  .bar-btn.action {
-    padding: 0 7px;
+  .turn-actions .bar-btn.action {
+    padding: 0 8px;
+  }
+
+  .held-row {
+    font-size: 12px;
   }
 
   .composer-bar {
@@ -3064,32 +3068,50 @@ a:hover {
   }
 }
 
-/* Docket and Gavel: the two actions that exist only while a turn is running. Filled amber so they
-   read as live controls rather than labels, with a count badge for what is filed. */
-.bar-btn.action {
-  gap: 5px;
+/* Hold and Steer. One segmented control that only exists while a turn is running: Hold always, Steer
+   the moment there is text. Hold carries the count of what is waiting. */
+.turn-actions {
+  display: inline-flex;
+  align-items: center;
   margin-left: 3px;
-  padding: 0 9px;
   border: 1px solid rgba(218, 124, 71, 0.38);
   border-radius: 999px;
   background: rgba(218, 124, 71, 0.1);
+  overflow: hidden;
+}
+
+.turn-actions .bar-btn.action {
+  margin: 0;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 0;
+  background: none;
   color: var(--primary-text, #e59a69);
   font-size: 12px;
   line-height: 1;
+  gap: 5px;
 }
 
-.bar-btn.action .icon {
+/* A rule between the two halves, only when Steer is showing. */
+.turn-actions.split .bar-btn.action + .bar-btn.action {
+  border-left: 1px solid rgba(218, 124, 71, 0.32);
+}
+
+.turn-actions .bar-btn.action:hover {
+  background: rgba(218, 124, 71, 0.16);
+}
+
+.turn-actions .bar-btn.action .icon {
   width: 14px;
   height: 14px;
   flex: none;
 }
 
-.bar-btn.action.filed {
-  border-color: rgba(218, 124, 71, 0.6);
-  background: rgba(218, 124, 71, 0.18);
+.turn-actions .bar-btn.action.filled {
+  background: rgba(218, 124, 71, 0.24);
 }
 
-.bar-btn.action .count {
+.turn-actions .bar-btn.action .count {
   min-width: 16px;
   height: 16px;
   padding: 0 5px;
@@ -3102,10 +3124,62 @@ a:hover {
   text-align: center;
 }
 
-.bar-btn.action:disabled {
-  border-color: var(--line);
-  background: transparent;
+.turn-actions .bar-btn.action:disabled {
+  background: none;
   color: var(--muted);
+}
+
+/* What is held, listed above the composer like a queue you can still change your mind about. */
+.held {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px 2px;
+}
+
+.held-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2, rgba(255, 255, 255, 0.02));
+  font-size: 12.5px;
+}
+
+.held-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.held-action {
+  flex: none;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--soft);
+  font-size: 12px;
+}
+
+.held-action:hover {
+  background: var(--hover);
+}
+
+.held-action.steer {
+  border: 1px solid rgba(218, 124, 71, 0.4);
+  color: var(--primary-text, #e59a69);
+}
+
+.held-action.drop {
+  width: 24px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 15px;
 }
 
 @media (prefers-reduced-motion: reduce) {
