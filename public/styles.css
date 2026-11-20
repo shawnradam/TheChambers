@@ -1146,6 +1146,24 @@ a:hover {
   color: var(--error);
 }
 
+/* An answer that Steer stopped before it finished. It is not in the session transcript — the agent was
+   killed before it could write one — so it is shown apart and labelled, rather than vanishing. */
+.msg.assistant.unsaved {
+  opacity: 0.92;
+}
+
+.msg.assistant.unsaved .bubble {
+  border-style: dashed;
+}
+
+.unsaved-head {
+  margin-bottom: 6px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(218, 124, 71, 0.5);
+  color: var(--primary-text, #e59a69);
+  font-size: 12px;
+}
+
 .tools {
   display: flex;
   flex-direction: column;
@@ -3069,14 +3087,14 @@ a:hover {
 }
 
 /* Hold and Steer. One segmented control that only exists while a turn is running: Hold always, Steer
-   the moment there is text. Hold carries the count of what is waiting. */
+   the moment there is text. No fill behind the icons — the outline alone says it is one control, and
+   the count badge says how much is waiting. */
 .turn-actions {
   display: inline-flex;
   align-items: center;
   margin-left: 3px;
   border: 1px solid rgba(218, 124, 71, 0.38);
   border-radius: 999px;
-  background: rgba(218, 124, 71, 0.1);
   overflow: hidden;
 }
 
@@ -3098,17 +3116,14 @@ a:hover {
 }
 
 .turn-actions .bar-btn.action:hover {
-  background: rgba(218, 124, 71, 0.16);
+  background: none;
+  color: var(--fg);
 }
 
 .turn-actions .bar-btn.action .icon {
   width: 14px;
   height: 14px;
   flex: none;
-}
-
-.turn-actions .bar-btn.action.filled {
-  background: rgba(218, 124, 71, 0.24);
 }
 
 .turn-actions .bar-btn.action .count {

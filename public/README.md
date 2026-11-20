@@ -40,11 +40,28 @@ Four static files, no framework, no build step. `index.html` holds the markup an
 - **One turn per session, always**: the client sends through a single gate and the server refuses a
   second concurrent turn on the same session with 409, so two agent processes can never write the same
   transcript.
+- **What Steer costs**: stopping kills the agent, so the unfinished turn is never written to the
+  session. What had already streamed is kept on screen in a dashed block labelled *not in the
+  session*, placed where it happened — visible but not history, and gone when you reopen the
+  conversation.
 - **On a phone** the bar is tight, so Hold and Steer show their icons and badge only, the model
   chip reads just the model name, and the agent dot is dropped (the label already says Plan or Build).
   Nothing is allowed to shrink to a sliver.
 
 ## Changelog
+
+### 2026-11-20 — what Steer costs, and a steer that never went out
+- Fixed: a steer issued when the turn had already finished set a pending message that nothing would
+  ever release, so it was silently never sent (`/api/stop` returned 404 and the message sat there).
+  With no turn in flight the steer now just sends
+- Added: a stopped turn leaves its streamed answer on screen in a dashed block headed *Stopped before
+  it finished — this answer is not in the session*, placed above the message the steer went on to send
+  (or after its own prompt, else last). It is not history, and it says so
+- Why: stopping kills the agent before it can write, so cmdc's transcript has no record of that turn —
+  the refresh that follows was deleting it from view, which read as "my task disappeared"
+- Verified: steering mid-stream gives `/api/stop` 200 and keeps 516–697 characters of partial answer
+  across the following refresh, header and body intact, correctly ordered before the steer message;
+  no console errors; `tools/verify.mjs` 15/15
 
 ### 2026-11-20 — Hold and Steer, and the end of double turns
 - Fixed: two turns could run at once in the same session. The server overwrote its `running` record

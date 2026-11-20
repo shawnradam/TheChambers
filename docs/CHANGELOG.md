@@ -5,6 +5,20 @@ their own smaller changelogs; this file is the whole story in order.
 
 ## 2026-11-20
 
+### interface — what Steer costs, and a steer that never went out
+- Fixed: a steer issued after the turn had already ended set `steerPending` with no turn left to
+  release it, so the message was never sent and nothing said so (`/api/stop` returned 404). With no
+  turn in flight, a steer now sends directly
+- Added: when a turn is stopped, its streamed answer is kept on screen in a dashed block headed
+  "Stopped before it finished — this answer is not in the session", anchored before the message the
+  steer went on to send, else after its own prompt, else last. It is deliberately not persisted: the
+  transcript stays the only history
+- Why: killing the agent means the interrupted turn never reaches cmdc's transcript, so the refresh
+  that follows a stop was deleting it from view — the reported "the other task gone"
+- Verified: steering mid-stream returns `/api/stop` 200 and keeps 516–697 characters across the
+  refresh, correctly ordered; the not-running path posts the message immediately; `tools/verify.mjs`
+  15/15
+
 ### server + interface — Hold and Steer, and one turn per session
 - Fixed: a second concurrent turn in the same conversation was accepted and overwrote the `running`
   record, so a second agent process wrote the same transcript and the earlier child could no longer be

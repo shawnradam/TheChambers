@@ -99,6 +99,8 @@ const state = {
   sending: false,
   hold: [],
   steerPending: null,
+  steerTarget: null,
+  unsaved: [],
   pollTimer: null,
   signature: '',
   messages: [],
@@ -132,7 +134,7 @@ const state = {
   picker: {open: false, mode: null, items: [], index: 0, tokenStart: 0, query: '', timer: null},
 };
 
-const live = {bubble: null, tools: new Map(), toolsEl: null, text: '', model: '', timer: null, pinned: true, started: 0};
+const live = {bubble: null, tools: new Map(), toolsEl: null, text: '', model: '', timer: null, pinned: true, started: 0, stopped: false};
 
 function lastModelOf(messages) {
   for (let i = (messages || []).length - 1; i >= 0; i -= 1) {
@@ -1176,6 +1178,7 @@ function startAssistant() {
   live.toolsEl = toolsEl;
   live.tools = new Map();
   live.text = '';
+  live.stopped = false;
   live.started = Date.now();
   live.pinned = true;
   startThinking(bubble);
@@ -1233,14 +1236,44 @@ function renderFoot(wrap, message) {
   wrap.append(foot);
 }
 
+function unsavedNode(entry) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg assistant unsaved';
+  const head = document.createElement('div');
+  head.className = 'unsaved-head';
+  head.textContent = entry.text
+    ? 'Stopped before it finished — this answer is not in the session'
+    : 'Stopped before it answered — nothing was written to the session';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = renderMarkdown(entry.text || '');
+  wrap.append(head, bubble);
+  return wrap;
+}
+
 function renderThread(messages) {
   els.thread.textContent = '';
   live.bubble = null;
   live.toolsEl = null;
   live.tools = new Map();
 
+  // An answer a stop cut short is put back where it happened: just before the message the steer went
+  // on to send, or after its own prompt if that one is in the transcript. Otherwise it goes last.
+  const unplaced = state.unsaved.slice();
+  const takeMatching = (key, value) => {
+    for (let i = 0; i < unplaced.length; i += 1) {
+      if (value && unplaced[i][key] === value) return unplaced.splice(i, 1)[0];
+    }
+    return null;
+  };
+
   for (const message of messages) {
     if (message.role === 'user') {
+      let pre = takeMatching('before', message.text);
+      while (pre) {
+        els.thread.append(unsavedNode(pre));
+        pre = takeMatching('before', message.text);
+      }
       const wrap = document.createElement('div');
       wrap.className = 'msg user';
       const bubble = document.createElement('div');
@@ -1248,6 +1281,11 @@ function renderThread(messages) {
       bubble.textContent = message.text || '';
       wrap.append(bubble);
       els.thread.append(wrap);
+      let post = takeMatching('prompt', message.text);
+      while (post) {
+        els.thread.append(unsavedNode(post));
+        post = takeMatching('prompt', message.text);
+      }
       continue;
     }
 
@@ -1267,6 +1305,9 @@ function renderThread(messages) {
     renderFoot(wrap, message);
     els.thread.append(wrap);
   }
+
+  for (const entry of unplaced) els.thread.append(unsavedNode(entry));
+
   scrollDown(true);
 }
 
@@ -1275,6 +1316,7 @@ function showEmpty() {
   els.title.textContent = 'New session';
   els.thread.textContent = '';
   state.messages = [];
+  state.unsaved = [];
   state.lastUsage = null;
   state.signature = '';
   updateContextRing();
@@ -1292,6 +1334,9 @@ async function openConversation(id) {
     localStorage.setItem('thechambers-open', conv.id);
     state.conversation = conv;
     state.messages = conv.messages || [];
+    // Answers that a stop cut short are not part of the transcript, so they do not travel with the
+    // conversation. Clearing here is what keeps them out of the next conversation's view.
+    state.unsaved = [];
     state.lastUsage = lastUsageOf(state.messages);
     state.signature = signatureOf(state.messages);
     els.title.textContent = conv.title || 'Conversation';
@@ -1404,7 +1449,6 @@ function updateHoldLabel() {
   const count = state.hold.length;
   els.holdCount.hidden = count === 0;
   els.holdCount.textContent = String(count);
-  els.hold.classList.toggle('filled', count > 0);
   renderHeld();
 }
 
@@ -1463,7 +1507,14 @@ function fileHold() {
 // is never lost, and a second turn can never be started on top of the first.
 function steerText(text) {
   if (!text) return;
+  // Nothing is running, so there is nothing to steer: just send it. Without this the message would
+  // wait for a turn that already ended and never go out.
+  if (!state.sending && !state.busy) {
+    dispatchTurn(text);
+    return;
+  }
   state.steerPending = text;
+  state.steerTarget = text;
   els.input.value = '';
   autoGrow();
   updateSendState();
@@ -1534,6 +1585,13 @@ function handleStreamEvent(payload) {
       stopThinking();
       if (payload.usage) state.lastUsage = payload.usage;
       if (payload.sessionId) state.sessionId = payload.sessionId;
+      live.stopped = Boolean(payload.stopped);
+      // A stopped turn never reaches the session transcript: the agent was killed before it could
+      // write one. Keep what streamed here, clearly labelled, so the refresh that follows does not
+      // make it look like the work never happened.
+      if (live.stopped) {
+        state.unsaved.push({text: live.text, prompt: live.prompt, before: state.steerTarget, at: Date.now()});
+      }
       break;
     default:
       break;
@@ -1545,6 +1603,7 @@ async function sendTurn(text) {
   openConversationView();
   if (wasEmpty) els.title.textContent = 'New session';
   appendUser(text);
+  live.prompt = text;
   const {wrap} = startAssistant();
   setBusy(true);
   state.lastUsage = null;
@@ -1646,6 +1705,7 @@ async function sendTurn(text) {
     if (state.steerPending) {
       const next = state.steerPending;
       state.steerPending = null;
+      state.steerTarget = null;
       dispatchTurn(next);
     } else if (state.hold.length) {
       const next = state.hold.shift();
@@ -3413,8 +3473,13 @@ function openHelp() {
       <div class="kv"><span>Steer</span><b>appears beside Hold once you type: stops the turn and sends it now</b></div>
       <p class="meta">Held messages wait in a strip above the composer — each one has its own
       <b>Steer</b> to promote it into the running turn, and an × to drop it. Enter holds, Ctrl+Enter
-      steers, and only one turn ever runs in a session, so nothing is started twice. The header spinner
-      means the machine is working, even when the thread is scrolled away.</p>
+      steers, and only one turn ever runs in a session, so nothing is started twice.</p>
+      <p class="meta"><b>Steer ends the running turn.</b> The agent is stopped, so whatever it had not
+      finished is never written to the session. What had already streamed stays on screen in a dashed
+      block marked <i>not in the session</i>, placed where it happened — it is not history and it will
+      not be there next time you open the conversation. If you want that work to finish, use Hold
+      instead. The header spinner means the machine is working, even when the thread is scrolled
+      away.</p>
 
       <h3>Modes</h3>
       <div class="kv"><span>Read-only</span><b>can read and explain; writes and commands are denied</b></div>
