@@ -2392,6 +2392,63 @@ a:hover {
   min-width: 0;
 }
 
+/* A slightly larger baseline: menus, lists and controls read better on a phone without
+   reflowing the layout. Explicit sizes in the mobile blocks below still win. */
+.item {
+  font-size: 15px;
+}
+
+.group h2 {
+  font-size: 14px;
+}
+
+#conv-title {
+  font-size: 16px;
+}
+
+.tab {
+  font-size: 14px;
+}
+
+.menu-item {
+  min-height: 34px;
+  font-size: 14px;
+}
+
+.menu-item .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.chip {
+  font-size: 13.5px;
+}
+
+.bar-btn {
+  font-size: 13px;
+}
+
+#input {
+  font-size: 15px;
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+}
+
+#menu .icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+  stroke-linecap: butt;
+}
+
+.meta {
+  font-size: 12.5px;
+}
+
 @media (max-width: 720px) {
   .settings-layout {
     flex-direction: column;
