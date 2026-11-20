@@ -63,6 +63,8 @@
       <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></symbol>
       <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" /></symbol>
       <symbol id="i-note" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6V3Z" /><path d="M14 3v4h4M9 12h7M9 16h5" /></symbol>
+      <symbol id="i-docket" viewBox="0 0 24 24"><path d="M6 3h8l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M14 3v4.5h4.5" /><path d="M7.5 12.5h6M7.5 16h4" /></symbol>
+      <symbol id="i-gavel" viewBox="0 0 24 24"><rect x="6.6" y="3.6" width="10.8" height="5.4" rx="1.6" /><path d="M12 9v10.4" /><path d="M6.4 21h11.2" /></symbol>
     </svg>
 
     <div id="app">
@@ -222,8 +224,8 @@
             <span class="spacer"></span>
             <button id="model-btn" class="bar-btn" type="button" title="Model"><svg class="icon"><use href="#i-cpu" /></svg><span id="model-label">Command Code / default</span><svg class="icon caret"><use href="#i-chevron-down" /></svg></button>
             <button id="agent-btn" class="bar-btn agent" type="button" title="Agent"><span class="agent-dot"></span><span id="agent-label">Build</span><svg class="icon caret"><use href="#i-chevron-down" /></svg></button>
-            <button id="docket" class="bar-btn action" type="button" title="File this for after the current turn" hidden>Docket</button>
-            <button id="gavel" class="bar-btn action" type="button" title="Stop this turn and send this instead" hidden>Gavel</button>
+            <button id="docket" class="bar-btn action" type="button" title="File this for after the current turn" aria-label="Docket" hidden><svg class="icon"><use href="#i-docket" /></svg><span class="lbl">Docket</span><span id="docket-count" class="count" hidden>0</span></button>
+            <button id="gavel" class="bar-btn action" type="button" title="Stop this turn and send this instead" aria-label="Gavel" hidden><svg class="icon"><use href="#i-gavel" /></svg><span class="lbl">Gavel</span></button>
             <button id="stop" class="send stop" type="button" aria-label="Stop" hidden>■</button>
             <button id="send" class="send" type="submit" aria-label="Send" disabled><svg class="icon"><use href="#i-send" /></svg></button>
           </div>

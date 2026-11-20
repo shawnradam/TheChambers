@@ -858,6 +858,7 @@ a:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   width: 26px;
   height: 26px;
   margin-left: 4px;
@@ -886,6 +887,9 @@ a:hover {
 .send.stop {
   color: var(--error);
   font-size: 11px;
+  border: 1px solid rgba(215, 100, 89, 0.5);
+  border-radius: 8px;
+  background: rgba(215, 100, 89, 0.15);
 }
 
 .chips {
@@ -2891,7 +2895,8 @@ a:hover {
     gap: 4px;
   }
   #model-btn {
-    max-width: 104px;
+    flex: 0 0 auto;
+    max-width: 76px;
   }
   #model-btn > .icon:first-child,
   #model-btn .caret,
@@ -2899,7 +2904,7 @@ a:hover {
     display: none;
   }
   #model-label {
-    max-width: 96px;
+    max-width: 68px;
   }
 }
 
@@ -2977,6 +2982,35 @@ a:hover {
 }
 
 @media (max-width: 520px) {
+  /* The bar runs out of room before the labels do any good, so the two turn actions keep their
+     icons and the count badge and drop the words — nothing gets crushed to a sliver. */
+  .bar-btn.action .lbl {
+    display: none;
+  }
+
+  .bar-btn.action {
+    padding: 0 7px;
+  }
+
+  .composer-bar {
+    gap: 3px;
+  }
+
+  .composer-bar .icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  /* The agent label already says Plan or Build, and the dot made "Default ● Build" read as one
+     string once the bar tightened up. */
+  .agent-dot {
+    display: none;
+  }
+
+  #agent-btn {
+    margin-left: 5px;
+  }
+
   .settings-nav {
     flex-wrap: wrap;
   }
@@ -3030,16 +3064,48 @@ a:hover {
   }
 }
 
-/* Docket and Gavel: only while a turn is running. */
+/* Docket and Gavel: the two actions that exist only while a turn is running. Filled amber so they
+   read as live controls rather than labels, with a count badge for what is filed. */
 .bar-btn.action {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--primary-text, #e59a69);
+  gap: 5px;
+  margin-left: 3px;
   padding: 0 9px;
+  border: 1px solid rgba(218, 124, 71, 0.38);
+  border-radius: 999px;
+  background: rgba(218, 124, 71, 0.1);
+  color: var(--primary-text, #e59a69);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.bar-btn.action .icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.bar-btn.action.filed {
+  border-color: rgba(218, 124, 71, 0.6);
+  background: rgba(218, 124, 71, 0.18);
+}
+
+.bar-btn.action .count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--primary-text, #e59a69);
+  color: #1a1917;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }
 
 .bar-btn.action:disabled {
-  opacity: 0.45;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

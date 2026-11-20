@@ -5,6 +5,17 @@ their own smaller changelogs; this file is the whole story in order.
 
 ## 2026-11-20
 
+### interface — composer polish: icons, budget, no slivers
+- Changed: Docket and Gavel are amber pills with their own icons (filed document, mallet) and the
+  docket carries a count badge rather than putting the number in the label
+- Fixed: the phone bar overflowed, so flex shrank the model chip to 6px and the stop button to 9px.
+  Under 520px the pills now drop their words, the model chip shows only the model name, the agent dot
+  is dropped, and the stop button is pinned at a real tap size with a filled look
+- Fixed: the docket was disabled on an empty composer and therefore usually grey; it opens the filed
+  list, so it is never disabled — only the gavel needs text
+- Verified: badge reads 1 then 2, the filed list shows both items plus Clear, dropping the first
+  returns it to 1, pills 34px, model chip 47.5px, stop 34px, no console errors
+
 ### interface — header indicator, Docket and Gavel
 - Added: THECHAMBERS wordmark above the sidebar header with the chat's braille spinner beside it
   (same 80ms frames, smaller and dimmer), visible only while a turn runs

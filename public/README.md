@@ -32,14 +32,31 @@ Four static files, no framework, no build step. `index.html` holds the markup an
   wordmark while a turn is running — smaller, quieter, and driven by the same 80ms ticker — so the
   header shows this machine is busy even when the thread is scrolled away. It rests invisible when
   idle.
-- **Docket / Gavel**: while a turn runs, the composer shows both. *Docket* files your text and hears
-  it as soon as the turn ends — the button carries the count, and pressing it with an empty composer
-  opens the list, where each item can be dropped or the whole docket cleared. *Gavel* stops the turn
-  and sends your text instead, in the same session. Enter mid-turn files to the docket; **Ctrl+Enter**
-  is the gavel. Both names are the project's own (a docket is the list of matters to be heard, a gavel
-  interrupts the proceeding) — no borrowed vocabulary. Commands: `/docket`, `/gavel`.
+- **Docket / Gavel**: while a turn runs, the composer shows both, as amber pills — an icon, the word,
+  and for the docket a count badge. *Docket* files your text and hears it as soon as the turn ends;
+  pressing it with an empty composer opens the filed list, where each item can be dropped or the whole
+  docket cleared. *Gavel* stops the turn and sends your text instead, in the same session. Enter
+  mid-turn files to the docket; **Ctrl+Enter** is the gavel. `/docket` and `/gavel` do the same from
+  the picker. Both names are the project's own — a docket is the list of matters to be heard, a gavel
+  interrupts the proceeding.
+- **On a phone** the bar is tight, so the two action pills show their icon and badge only, the model
+  chip reads just the model name, and the agent dot is dropped (the label already says Plan or Build).
+  Nothing is allowed to shrink to a sliver.
 
 ## Changelog
+
+### 2026-11-20 — composer polish: icons, budget, no slivers
+- Changed: Docket and Gavel are proper amber pills with their own icons — a filed document and a
+  mallet — and the docket carries a count badge instead of the number in its label
+- Fixed: on a phone the bar overflowed, and flex shrank the model chip to 6px and the stop button to
+  9px. The pills now drop their words under 520px, the model chip reads just the model name, the
+  agent dot is dropped (the label says Plan or Build), and the stop button is pinned at a real tap
+  size with a filled rounded look. Measured after: every child between 28 and 48px, 62px free
+- Fixed: the docket was disabled whenever the composer was empty, so it usually rendered greyed out —
+  it opens the filed list, so it is never disabled now; only the gavel needs text
+- Verified: filing shows the badge 1 then 2, the filed list lists both items with a Clear row,
+  dropping the first returns the badge to 1, both pills measure 34px, the model chip 47.5px, the stop
+  34px, and there are no console errors
 
 ### 2026-11-20 — header indicator, Docket and Gavel
 - Added: THECHAMBERS wordmark above the sidebar header with the chat's braille spinner beside it —

@@ -55,6 +55,7 @@ const els = {
   send: $('#send'),
   stop: $('#stop'),
   docket: $('#docket'),
+  docketCount: $('#docket-count'),
   gavel: $('#gavel'),
   attach: $('#attach'),
   fileInput: $('#file-input'),
@@ -1397,9 +1398,12 @@ function setBusy(busy) {
 // While a turn runs the composer offers two choices. The docket holds text and hears it as soon as
 // this turn ends; the gavel stops the turn and redirects it now, in the same session.
 function updateDocketLabel() {
-  els.docket.textContent = state.docket.length ? `Docket ${state.docket.length}` : 'Docket';
-  els.docket.title = state.docket.length
-    ? `${state.docket.length} filed — click to review`
+  const count = state.docket.length;
+  els.docketCount.hidden = count === 0;
+  els.docketCount.textContent = String(count);
+  els.docket.classList.toggle('filed', count > 0);
+  els.docket.title = count
+    ? `${count} filed — tap to review`
     : 'File this for after the current turn';
 }
 
@@ -1471,7 +1475,8 @@ function gavelMessage() {
 function updateSendState() {
   els.send.disabled = state.busy || (!els.input.value.trim() && !state.attachments.length);
   const hasText = Boolean(els.input.value.trim());
-  els.docket.disabled = !hasText;
+  // The docket is never disabled: with an empty composer it opens the filed list. Only the gavel
+  // needs something to send.
   els.gavel.disabled = !hasText;
 }
 
@@ -2496,12 +2501,15 @@ async function renderKnowledge() {
 // ---------------------------------------------------------------------------
 
 function setModelLabel(model) {
+  // On a phone the chip sits in a narrow bar, so it names the model without the suffix. Without
+  // this it shrinks to a few pixels and reads as a broken control.
+  const narrow = window.innerWidth <= 520;
   if (!model) {
-    els.modelLabel.textContent = 'Command Code / default';
+    els.modelLabel.textContent = narrow ? 'Default' : 'Command Code / default';
     return;
   }
   const suffix = state.model ? (state.model === model ? 'selected' : 'active') : 'default';
-  els.modelLabel.textContent = `${shortModel(model)} / ${suffix}`;
+  els.modelLabel.textContent = narrow ? shortModel(model) : `${shortModel(model)} / ${suffix}`;
 }
 
 function modeLabel() {
