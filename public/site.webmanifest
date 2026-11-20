@@ -1,7 +1,7 @@
 {
   "name": "TheChambers",
   "short_name": "TheChambers",
-  "description": "Command Code from your phone, over Tailscale.",
+  "description": "A browser-side CLI: drive a command-line coding agent from your phone, over Tailscale.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#171515",

@@ -13,8 +13,9 @@
 
 **Documentation:** area references live next to their code — `server.md`, `bin/README.md`,
 `public/README.md`, `providers/README.md`, `plugins/README.md`, `tools/README.md` — with the rule that
-keeps them current in [docs/README.md](./docs/README.md) and the history in
-[docs/CHANGELOG.md](./docs/CHANGELOG.md).
+keeps them current in [docs/README.md](./docs/README.md), the history in
+[docs/CHANGELOG.md](./docs/CHANGELOG.md), and the term this project coined in
+[docs/BROWSER-SIDE-CLI.md](./docs/BROWSER-SIDE-CLI.md).
 
 Formally known as cmdc. Rebuilt from scratch for
 [Command Code](https://commandcode.ai).
@@ -26,6 +27,16 @@ CLI — with live streaming, your real projects, and your real sessions.
 It does not re-implement an agent. It spawns Command Code headless (`cmdc -p`), streams the
 frames to the browser, and reads Command Code's own session transcripts, so what you see is the
 same work the CLI did.
+
+## A browser-side CLI
+
+TheChambers is a **browser-side CLI**: you drive a command-line coding agent from an ordinary browser
+tab, while the CLI runs on a machine you control and the browser is only the client.
+
+That is the *inverse* of a **browser CLI**, which means the opposite thing and has meant it for years
+— a CLI that drives a browser. The phrase without *a side* is spoken for, so this project spells out
+the side it is on. [docs/BROWSER-SIDE-CLI.md](./docs/BROWSER-SIDE-CLI.md) defines the term, the five
+tests a project must pass to qualify, and where TheChambers stands against each one.
 
 ---
 
