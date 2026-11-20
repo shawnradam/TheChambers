@@ -1,0 +1,21 @@
+{
+  "id": "example",
+  "name": "Example plugin",
+  "version": "0.1.0",
+  "description": "A minimal TheChambers plugin.",
+  "author": "",
+  "main": "server.mjs",
+  "ui": "ui/index.html",
+  "panel": {
+    "title": "Example",
+    "icon": "plug"
+  },
+  "commands": [
+    {
+      "name": "example",
+      "description": "Open the example panel",
+      "action": "panel"
+    }
+  ],
+  "permissions": []
+}

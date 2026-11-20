@@ -22,6 +22,9 @@ contributions are the easiest to review.
 3. **One file per agent.** Supporting a new coding-agent CLI means adding `providers/<id>.mjs`, not
    branching the server. The contract, the normalized events and a worked example are in
    [providers/README.md](./providers/README.md); `providers/cmdc.mjs` is the reference.
+4. **Docs ship with the code.** Every creation gets a `.md` beside it, every change updates that
+   `.md` in the same commit, and each doc carries a dated changelog. The rule and the file map are
+   in [docs/README.md](./docs/README.md); the running history is [docs/CHANGELOG.md](./docs/CHANGELOG.md).
 
 ## Getting set up
 

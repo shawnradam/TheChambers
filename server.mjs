@@ -17,6 +17,22 @@ import {spawn, execFile, execFileSync, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 import {loadProviders, selectProvider, describeProviders} from './providers/index.mjs';
+import {
+  PLUGINS_DIR,
+  loadPlugins,
+  listPluginRecords,
+  getPlugin,
+  findPluginRoute,
+  pluginIdValid,
+  pluginConfigApi,
+  pluginLog,
+  resolvePluginAsset,
+  setPluginEnabled,
+  reloadPlugin,
+  createPluginScaffold,
+  installPluginFrom,
+  removePlugin,
+} from './plugins/index.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -179,6 +195,7 @@ const DEFAULT_SETTINGS = {
   autoUpdate: false,
   lastCheckAt: 0,
   lastKnownRemote: null,
+  plugins: {},
 };
 
 let settings = {...DEFAULT_SETTINGS};
@@ -189,6 +206,9 @@ try {
   }
 } catch (err) {
   console.error(`[thechambers] Ignoring unreadable ${SETTINGS_FILE}: ${err.message}`);
+}
+if (!settings.plugins || typeof settings.plugins !== 'object' || Array.isArray(settings.plugins)) {
+  settings.plugins = {};
 }
 
 function persistSettings() {
@@ -222,6 +242,10 @@ function providerState() {
     available: Boolean(available.ok),
   };
 }
+
+// Plugins are loaded after settings so the enabled set is known. A broken plugin is recorded and
+// skipped, never fatal to startup.
+const INITIAL_PLUGINS = await loadPlugins({settings, log: logLine});
 
 // ---------------------------------------------------------------------------
 // Token accounting
@@ -1100,6 +1124,117 @@ function serveStatic(res, relPath, type, status = 200) {
 }
 
 // ---------------------------------------------------------------------------
+// Plugin HTTP surface
+// ---------------------------------------------------------------------------
+
+const PLUGIN_ASSET_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.txt': 'text/plain; charset=utf-8',
+};
+
+function pluginText(res, status, body, type = 'text/plain; charset=utf-8') {
+  const text = String(body == null ? '' : body);
+  res.writeHead(status, {
+    'Content-Type': type,
+    'Content-Length': Buffer.byteLength(text),
+    'Cache-Control': 'no-store',
+  });
+  res.end(text);
+}
+
+function servePluginAsset(res, url) {
+  const rest = url.pathname.slice('/plugin-assets/'.length);
+  const slash = rest.indexOf('/');
+  let id;
+  let relative;
+  try {
+    id = decodeURIComponent(slash === -1 ? rest : rest.slice(0, slash));
+    relative = slash === -1 ? '' : rest.slice(slash + 1).split('/').map(decodeURIComponent).join('/');
+  } catch {
+    return pluginText(res, 400, 'Bad asset path.');
+  }
+  if (!pluginIdValid(id)) return pluginText(res, 400, 'Bad plugin id.');
+
+  const resolved = resolvePluginAsset(id, relative);
+  if (!resolved) return pluginText(res, 404, 'No such plugin asset.');
+
+  let body;
+  try {
+    body = fs.readFileSync(resolved.file);
+  } catch {
+    return pluginText(res, 404, 'No such plugin asset.');
+  }
+  const type = PLUGIN_ASSET_TYPES[path.extname(resolved.file).toLowerCase()] || 'application/octet-stream';
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Length': body.length,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy':
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self'",
+  });
+  res.end(body);
+}
+
+async function dispatchPlugin(req, res, url) {
+  const pieces = url.pathname.split('/').filter(Boolean); // api / plugin / <id> / <route...>
+  let id;
+  let subpath;
+  try {
+    id = decodeURIComponent(pieces[2] || '');
+    subpath = pieces.slice(3).map(decodeURIComponent).join('/');
+  } catch {
+    return json(res, 400, {error: 'Bad plugin path.'});
+  }
+  if (!pluginIdValid(id)) return json(res, 400, {error: 'Bad plugin id.'});
+
+  const found = findPluginRoute(id, req.method, subpath);
+  if (!found) return json(res, 404, {error: 'No such plugin route.'});
+
+  const ctx = {
+    req,
+    res,
+    url,
+    method: req.method,
+    workspace: WORKSPACE,
+    body: (limit) => readJson(req, limit || 1 << 20),
+    json: (status, payload) => json(res, status, payload),
+    text: (status, body, type) => pluginText(res, status, body, type),
+    config: pluginConfigApi(id),
+    log: (message) => pluginLog(id, message),
+  };
+
+  try {
+    const result = await found.route.handler(ctx);
+    if (!res.writableEnded && result !== undefined) json(res, 200, result);
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      if (!res.headersSent) return json(res, 400, {error: 'Malformed JSON body.'});
+      if (!res.writableEnded) res.end();
+      return;
+    }
+    console.error(`[thechambers] plugin ${id} route failed`, err);
+    logLine(`plugin ${id} route failed: ${err && err.stack ? err.stack : err}`);
+    if (!res.headersSent) json(res, 500, {error: err.message});
+    else if (!res.writableEnded) res.end();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Routing
 // ---------------------------------------------------------------------------
 
@@ -1154,7 +1289,7 @@ const handler = async (req, res) => {
       return res.end(JSON.stringify({ok: true}));
     }
 
-    if (pathname.startsWith('/api/') || pathname === '/') {
+    if (pathname.startsWith('/api/') || pathname.startsWith('/plugin-assets/') || pathname === '/') {
       if (!isAuthed(req)) {
         if (pathname === '/') {
           res.writeHead(302, {Location: '/login'});
@@ -1187,6 +1322,10 @@ const handler = async (req, res) => {
 
     if (req.method === 'GET' && STATIC[pathname]) {
       return serveStatic(res, STATIC[pathname][0], STATIC[pathname][1]);
+    }
+
+    if (req.method === 'GET' && pathname.startsWith('/plugin-assets/')) {
+      return servePluginAsset(res, url);
     }
 
     if (req.method === 'POST' && pathname === '/api/logout') {
@@ -1713,6 +1852,120 @@ const handler = async (req, res) => {
 
     if (req.method === 'GET' && pathname === '/api/skills') {
       return json(res, 200, {skills: listSkills()});
+    }
+
+    // -----------------------------------------------------------------------
+    // Plugin manager
+    // -----------------------------------------------------------------------
+
+    if (req.method === 'GET' && pathname === '/api/plugins') {
+      return json(res, 200, {plugins: listPluginRecords(), root: PLUGINS_DIR});
+    }
+
+    if (req.method === 'POST' && pathname === '/api/plugins/refresh') {
+      const plugins = await loadPlugins({settings, log: logLine});
+      return json(res, 200, {plugins, root: PLUGINS_DIR});
+    }
+
+    if (req.method === 'POST' && pathname === '/api/plugins/create') {
+      const body = await readJson(req).catch(() => ({}));
+      try {
+        const manifest = createPluginScaffold(
+          {
+            id: String(body.id || '').trim().toLowerCase(),
+            name: String(body.name || '').trim().slice(0, 80),
+            description: String(body.description || '').trim().slice(0, 300),
+            panel: body.panel !== false,
+            ui: body.ui !== false,
+          },
+          path.join(HERE, 'plugins', '_template'),
+        );
+        await loadPlugins({settings, log: logLine});
+        const plugin = listPluginRecords().find((entry) => entry.id === manifest.id) || null;
+        return json(res, 201, {plugin, path: path.join(PLUGINS_DIR, manifest.id)});
+      } catch (err) {
+        return json(res, 400, {error: err.message});
+      }
+    }
+
+    if (req.method === 'POST' && pathname === '/api/plugins/install') {
+      const body = await readJson(req).catch(() => ({}));
+      try {
+        const manifest = installPluginFrom(String(body.path || ''));
+        await loadPlugins({settings, log: logLine});
+        const plugin = listPluginRecords().find((entry) => entry.id === manifest.id) || null;
+        return json(res, 201, {plugin, path: path.join(PLUGINS_DIR, manifest.id)});
+      } catch (err) {
+        return json(res, 400, {error: err.message});
+      }
+    }
+
+    const pluginAction = pathname.match(/^\/api\/plugins\/([a-z0-9][a-z0-9-]{1,48})\/(enable|reload|deps)$/);
+    if (req.method === 'POST' && pluginAction) {
+      const id = pluginAction[1];
+      const action = pluginAction[2];
+      const record = getPlugin(id);
+      if (!record) return json(res, 404, {error: 'No such plugin.'});
+
+      if (action === 'enable') {
+        const body = await readJson(req).catch(() => ({}));
+        if (typeof body.enabled !== 'boolean') {
+          return json(res, 400, {error: 'Expected {enabled: true|false}.'});
+        }
+        const saved = settings.plugins[id] || {};
+        if (body.enabled && !saved.trustedAt && body.trust !== true) {
+          return json(res, 428, {
+            error: 'Trust confirmation required. This plugin runs code on this machine.',
+            permissions: Array.isArray(record.manifest.permissions) ? record.manifest.permissions : [],
+          });
+        }
+        settings.plugins[id] = {
+          ...saved,
+          enabled: body.enabled,
+          trustedAt: saved.trustedAt || (body.enabled ? Date.now() : null),
+        };
+        persistSettings();
+        const plugin = await setPluginEnabled(id, body.enabled);
+        return json(res, 200, {plugin});
+      }
+
+      if (action === 'reload') {
+        const plugin = await reloadPlugin(id);
+        return json(res, 200, {plugin});
+      }
+
+      if (action === 'deps') {
+        if (!fs.existsSync(path.join(record.dir, 'package.json'))) {
+          return json(res, 400, {error: 'This plugin has no package.json.'});
+        }
+        const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const result = await runProcess(npm, ['install', '--omit=dev'], {
+          cwd: record.dir,
+          timeout: 120000,
+          max: 512 * 1024,
+        });
+        const output = `${result.stdout}${result.stderr}`.trim().slice(-20000);
+        if (result.ok && record.enabled) await reloadPlugin(id);
+        return json(res, result.ok ? 200 : 500, {ok: result.ok, output});
+      }
+    }
+
+    const pluginDelete = pathname.match(/^\/api\/plugins\/([a-z0-9][a-z0-9-]{1,48})$/);
+    if (req.method === 'DELETE' && pluginDelete) {
+      const id = pluginDelete[1];
+      try {
+        const result = removePlugin(id);
+        delete settings.plugins[id];
+        persistSettings();
+        await loadPlugins({settings, log: logLine});
+        return json(res, 200, {ok: true, ...result});
+      } catch (err) {
+        return json(res, 400, {error: err.message});
+      }
+    }
+
+    if (pathname.startsWith('/api/plugin/')) {
+      return dispatchPlugin(req, res, url);
     }
 
     res.writeHead(404, {'Content-Type': 'application/json; charset=utf-8'});

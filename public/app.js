@@ -119,6 +119,8 @@ const state = {
   skills: null,
   skillsLoading: false,
   mentionCache: new Map(),
+  plugins: [],
+  pluginRoot: '',
   picker: {open: false, mode: null, items: [], index: 0, tokenStart: 0, query: '', timer: null},
 };
 
@@ -847,6 +849,22 @@ async function loadNotes() {
     state.notes = data.notes || [];
   } catch {
     state.notes = [];
+  }
+}
+
+async function loadPlugins() {
+  try {
+    const data = await api('/api/plugins');
+    state.plugins = data.plugins || [];
+    state.pluginRoot = data.root || state.pluginRoot;
+  } catch {
+    state.plugins = [];
+  }
+  renderPluginRail();
+  if (state.panel && state.panel.startsWith('plugin:')) {
+    const id = state.panel.slice('plugin:'.length);
+    const plugin = state.plugins.find((entry) => entry.id === id);
+    if (!plugin || !plugin.enabled || !plugin.loaded) closePanel();
   }
 }
 
@@ -1737,6 +1755,85 @@ const panelMeta = {
   context: {title: 'Context', icon: 'chart'},
 };
 
+const PLUGIN_ICONS = new Set(['globe', 'folder', 'cloud', 'terminal', 'plug', 'book']);
+
+function pluginById(id) {
+  return (state.plugins || []).find((plugin) => plugin.id === id) || null;
+}
+
+function pluginPanelIcon(plugin) {
+  const name = plugin && plugin.panel && plugin.panel.icon;
+  return name && PLUGIN_ICONS.has(name) ? name : 'plug';
+}
+
+function renderPluginRail() {
+  for (const node of els.rail.querySelectorAll('[data-plugin-rail]')) node.remove();
+  const plugins = (state.plugins || [])
+    .filter((plugin) => plugin.enabled && plugin.loaded && plugin.panel && plugin.uiUrl)
+    .sort((a, b) =>
+      String(a.panel.title || a.name).localeCompare(String(b.panel.title || b.name)),
+    );
+  if (!plugins.length) return;
+
+  const separator = document.createElement('div');
+  separator.className = 'rail-sep';
+  separator.dataset.pluginRail = '1';
+  els.railConfig.before(separator);
+
+  for (const plugin of plugins) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.panel = `plugin:${plugin.id}`;
+    button.dataset.pluginRail = '1';
+    button.title = plugin.panel.title || plugin.name;
+    button.innerHTML = icon(pluginPanelIcon(plugin));
+    els.railConfig.before(button);
+  }
+}
+
+function renderPluginPanel(id) {
+  const plugin = pluginById(id);
+  const title = plugin ? plugin.panel?.title || plugin.name : 'Plugin';
+
+  if (!plugin || !plugin.enabled || !plugin.loaded || !plugin.uiUrl) {
+    panelHead(
+      `<div class="tab active">${icon(pluginPanelIcon(plugin))}<span>${esc(title)}</span></div>`,
+      `<button class="icon-btn" data-close title="Close">${icon('x')}</button>`,
+    );
+    els.panelBody.innerHTML = `<div class="panel-empty">${icon('plug')}<strong>${esc(
+      title,
+    )}</strong><span>${esc(plugin?.error || 'The plugin is disabled or has no panel.')}</span></div>`;
+    return;
+  }
+
+  panelHead(
+    `<div class="tab active">${icon(pluginPanelIcon(plugin))}<span>${esc(title)}</span></div>`,
+    `<button class="icon-btn" data-plugin-reload title="Reload plugin">${icon(
+      'refresh',
+    )}</button><button class="icon-btn" data-expand title="Expand">${icon(
+      'expand',
+    )}</button><button class="icon-btn" data-close title="Close">${icon('x')}</button>`,
+  );
+
+  els.panelBody.innerHTML = `<iframe class="plugin-frame" title="${esc(title)}" src="${esc(
+    plugin.uiUrl,
+  )}${plugin.uiUrl.includes('?') ? '&' : '?'}v=${Date.now()}"></iframe>`;
+
+  const reload = els.panelActions.querySelector('[data-plugin-reload]');
+  if (reload) {
+    reload.addEventListener('click', async () => {
+      try {
+        await api(`/api/plugins/${encodeURIComponent(id)}/reload`, {method: 'POST', body: '{}'});
+        await loadPlugins();
+        renderPluginPanel(id);
+        toast('Plugin reloaded.');
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+  }
+}
+
 function setRailActive() {
   els.rail.querySelectorAll('button[data-panel]').forEach((button) => {
     button.classList.toggle('active', button.dataset.panel === state.panel && !els.panel.hidden);
@@ -1765,6 +1862,7 @@ async function openPanel(name) {
   els.panelBody.innerHTML = '';
   setRailActive();
 
+  if (name.startsWith('plugin:')) return renderPluginPanel(name.slice('plugin:'.length));
   if (name === 'context') return renderContextPanel();
   await renderPanel(name);
 }
@@ -1793,6 +1891,7 @@ function panelHead(tabs, actions) {
 }
 
 async function renderPanel(name, force = false) {
+  if (name.startsWith('plugin:')) return renderPluginPanel(name.slice('plugin:'.length));
   els.panelBody.innerHTML = '<div class="panel-empty">Loading…</div>';
   try {
     if (name === 'files') await renderFiles();
@@ -2717,6 +2816,303 @@ function openUpdates() {
 // Settings, shortcuts, misc
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Plugin manager
+// ---------------------------------------------------------------------------
+
+function pluginCardHtml(plugin) {
+  const status = plugin.error
+    ? '<span class="plugin-status bad">Failed</span>'
+    : plugin.enabled
+      ? plugin.loaded
+        ? '<span class="plugin-status ok">Enabled</span>'
+        : '<span class="plugin-status bad">Not loaded</span>'
+      : '<span class="plugin-status">Disabled</span>';
+  const permissions =
+    plugin.permissions && plugin.permissions.length
+      ? ` · ${esc(plugin.permissions.join(', '))}`
+      : '';
+
+  return `<div class="plugin-card" data-plugin-card="${esc(plugin.id)}">
+    <div class="plugin-card-head">
+      <div class="plugin-title">
+        <span class="plugin-name">${esc(plugin.name)}</span>
+        <span class="plugin-version">v${esc(plugin.version)}</span>
+        <span class="plugin-source">${esc(plugin.source)}</span>
+      </div>
+      <label class="plugin-toggle"><input type="checkbox" data-plugin-enable ${
+        plugin.enabled ? 'checked' : ''
+      } /> <span>Enabled</span></label>
+    </div>
+    <p class="plugin-desc">${esc(plugin.description || 'No description.')}</p>
+    <div class="plugin-meta"><code>${esc(plugin.id)}</code>${permissions}<span class="spacer"></span>${status}</div>
+    ${plugin.error ? `<div class="plugin-error">${esc(plugin.error)}</div>` : ''}
+    <div class="plugin-card-actions">
+      ${
+        plugin.enabled && plugin.loaded && plugin.uiUrl
+          ? '<button class="btn" data-plugin-open type="button">Open panel</button>'
+          : ''
+      }
+      <button class="btn" data-plugin-reload type="button">Reload</button>
+      ${
+        plugin.hasPackage
+          ? '<button class="btn" data-plugin-deps type="button">Install dependencies</button>'
+          : ''
+      }
+      <button class="btn" data-plugin-copy type="button">Copy path</button>
+      ${
+        plugin.source === 'user'
+          ? '<button class="btn danger" data-plugin-remove type="button">Remove</button>'
+          : ''
+      }
+    </div>
+  </div>`;
+}
+
+async function applyPluginEnabled(plugin, enabled, rerender, trust = false) {
+  try {
+    await api(`/api/plugins/${encodeURIComponent(plugin.id)}/enable`, {
+      method: 'POST',
+      body: JSON.stringify({enabled, ...(trust ? {trust: true} : {})}),
+    });
+    await loadPlugins();
+    const current = pluginById(plugin.id);
+    if (enabled && current && current.error) toast(current.error);
+    await rerender();
+  } catch (err) {
+    toast(err.message);
+    await rerender();
+  }
+}
+
+function confirmPluginEnable(plugin, onConfirm) {
+  openModal({
+    title: `Enable ${plugin.name}?`,
+    width: 480,
+    content: `
+      <p>This plugin runs Node.js code in the TheChambers process. It can read files, use the
+      network, and start processes on this machine.</p>
+      <div class="kv"><span>Source</span><b>${esc(plugin.source)}</b></div>
+      <div class="kv"><span>Folder</span><b>${esc(plugin.dir)}</b></div>
+      <div class="kv"><span>Permissions</span><b>${esc(
+        plugin.permissions && plugin.permissions.length ? plugin.permissions.join(', ') : 'not declared',
+      )}</b></div>
+      <p class="plugin-warning">Only enable a plugin whose code you trust. There is no sandbox.</p>
+      <div class="actions">
+        <button class="btn" data-cancel type="button">Cancel</button>
+        <button class="btn primary" data-enable type="button">Enable plugin</button>
+      </div>`,
+    onOpen: ({body, close}) => {
+      body.querySelector('[data-cancel]').addEventListener('click', close);
+      body.querySelector('[data-enable]').addEventListener('click', () => {
+        close();
+        onConfirm();
+      });
+    },
+  });
+}
+
+function confirmPluginRemove(plugin, onDone) {
+  openModal({
+    title: `Remove ${plugin.name}?`,
+    width: 460,
+    content: `
+      <p>The plugin folder is moved to <code>plugins/.trash</code> and kept for 30 days. Its
+      configuration stays in <code>plugin-data/${esc(plugin.id)}</code>.</p>
+      <div class="actions">
+        <button class="btn" data-cancel type="button">Cancel</button>
+        <button class="btn danger" data-remove type="button">Remove plugin</button>
+      </div>`,
+    onOpen: ({body, close}) => {
+      body.querySelector('[data-cancel]').addEventListener('click', close);
+      body.querySelector('[data-remove]').addEventListener('click', async () => {
+        close();
+        try {
+          await api(`/api/plugins/${encodeURIComponent(plugin.id)}`, {method: 'DELETE'});
+          toast('Plugin moved to .trash.');
+          await onDone();
+        } catch (err) {
+          toast(err.message);
+          await onDone();
+        }
+      });
+    },
+  });
+}
+
+function openPluginCreate(onDone) {
+  openModal({
+    title: 'Create plugin',
+    width: 520,
+    content: `
+      <label class="label">Plugin id</label>
+      <input class="text" id="plugin-id" placeholder="my-plugin" autocomplete="off" />
+      <label class="label">Name</label>
+      <input class="text" id="plugin-name" placeholder="My plugin" autocomplete="off" />
+      <label class="label">Description</label>
+      <input class="text" id="plugin-desc" placeholder="What it does" autocomplete="off" />
+      <label class="check"><input type="checkbox" id="plugin-ui" checked /> Include a starter UI</label>
+      <label class="check"><input type="checkbox" id="plugin-panel" checked /> Add a panel to the rail</label>
+      <div class="actions">
+        <button class="btn" data-cancel type="button">Cancel</button>
+        <button class="btn primary" data-create type="button">Create plugin</button>
+      </div>`,
+    onOpen: ({body, close}) => {
+      body.querySelector('[data-cancel]').addEventListener('click', close);
+      body.querySelector('[data-create]').addEventListener('click', async () => {
+        const id = body.querySelector('#plugin-id').value.trim().toLowerCase();
+        if (!id) {
+          toast('Give the plugin an id.');
+          return;
+        }
+        try {
+          const data = await api('/api/plugins/create', {
+            method: 'POST',
+            body: JSON.stringify({
+              id,
+              name: body.querySelector('#plugin-name').value.trim() || id,
+              description: body.querySelector('#plugin-desc').value.trim(),
+              ui: body.querySelector('#plugin-ui').checked,
+              panel: body.querySelector('#plugin-panel').checked,
+            }),
+          });
+          close();
+          toast(`Created ${data.path || id}. Edit it, then Reload.`);
+          await onDone();
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+    },
+  });
+}
+
+async function renderPluginManager(pane, close) {
+  pane.innerHTML = '<div class="panel-empty">Loading plugins…</div>';
+  await loadPlugins();
+  const plugins = state.plugins || [];
+  const rerender = () => renderPluginManager(pane, close);
+
+  pane.innerHTML = `
+    <h3>Plugins</h3>
+    <p class="plugin-warning">Plugins run Node.js code on this machine with the same access as
+    TheChambers. Only enable code you trust. There is no sandbox.</p>
+    <div class="plugin-toolbar">
+      <button class="btn primary" data-plugin-create type="button">Create plugin…</button>
+      <button class="btn" data-plugin-install type="button">Install from folder…</button>
+      <button class="btn" data-plugin-refresh type="button">Refresh</button>
+    </div>
+    <div class="plugin-list">${
+      plugins.length
+        ? plugins.map(pluginCardHtml).join('')
+        : '<p class="empty-row">No plugins yet. Create one or install a folder.</p>'
+    }</div>
+    <p class="plugin-root">Plugin folder: <code>${esc(state.pluginRoot || '')}</code></p>`;
+
+  pane.querySelector('[data-plugin-create]').addEventListener('click', () => openPluginCreate(rerender));
+  pane.querySelector('[data-plugin-install]').addEventListener('click', () =>
+    openPrompt({
+      title: 'Install plugin',
+      label: 'Folder containing plugin.json',
+      placeholder: 'C:\\path\\to\\plugin',
+      confirm: 'Install',
+      onConfirm: async (path) => {
+        try {
+          await api('/api/plugins/install', {method: 'POST', body: JSON.stringify({path})});
+          toast('Plugin installed.');
+          await rerender();
+        } catch (err) {
+          toast(err.message);
+        }
+      },
+    }),
+  );
+  pane.querySelector('[data-plugin-refresh]').addEventListener('click', async () => {
+    try {
+      await api('/api/plugins/refresh', {method: 'POST', body: '{}'});
+      await rerender();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  for (const plugin of plugins) {
+    const card = pane.querySelector(`[data-plugin-card="${plugin.id}"]`);
+    if (!card) continue;
+
+    const toggle = card.querySelector('[data-plugin-enable]');
+    if (toggle) {
+      toggle.addEventListener('change', async (event) => {
+        const want = event.target.checked;
+        if (want && !plugin.trusted) {
+          event.target.checked = false;
+          confirmPluginEnable(plugin, () => applyPluginEnabled(plugin, true, rerender, true));
+          return;
+        }
+        toggle.disabled = true;
+        await applyPluginEnabled(plugin, want, rerender);
+      });
+    }
+
+    const open = card.querySelector('[data-plugin-open]');
+    if (open) {
+      open.addEventListener('click', () => {
+        close();
+        openPanel(`plugin:${plugin.id}`);
+      });
+    }
+
+    const reload = card.querySelector('[data-plugin-reload]');
+    if (reload) {
+      reload.addEventListener('click', async () => {
+        try {
+          await api(`/api/plugins/${encodeURIComponent(plugin.id)}/reload`, {
+            method: 'POST',
+            body: '{}',
+          });
+          toast('Plugin reloaded.');
+          await rerender();
+        } catch (err) {
+          toast(err.message);
+        }
+      });
+    }
+
+    const deps = card.querySelector('[data-plugin-deps]');
+    if (deps) {
+      deps.addEventListener('click', async () => {
+        deps.disabled = true;
+        toast('Installing dependencies…');
+        try {
+          const data = await api(`/api/plugins/${encodeURIComponent(plugin.id)}/deps`, {
+            method: 'POST',
+            body: '{}',
+          });
+          const lines = String(data.output || '').trim().split('\n');
+          toast(lines[lines.length - 1] || 'Dependencies installed.');
+          await rerender();
+        } catch (err) {
+          toast(err.message);
+          await rerender();
+        }
+      });
+    }
+
+    const copy = card.querySelector('[data-plugin-copy]');
+    if (copy) {
+      copy.addEventListener('click', () => {
+        if (navigator.clipboard) navigator.clipboard.writeText(plugin.dir);
+        toast('Path copied.');
+      });
+    }
+
+    const remove = card.querySelector('[data-plugin-remove]');
+    if (remove) {
+      remove.addEventListener('click', () => confirmPluginRemove(plugin, rerender));
+    }
+  }
+}
+
 function openSettings() {
   openModal({
     title: 'Settings',
@@ -2728,6 +3124,7 @@ function openSettings() {
           <button class="menu-item active" data-pane="general" type="button">${icon('gear')}General</button>
           <button class="menu-item" data-pane="updates" type="button">${icon('refresh')}Updates</button>
           <button class="menu-item" data-pane="projects" type="button">${icon('folder')}Projects</button>
+          <button class="menu-item" data-pane="plugins" type="button">${icon('plug')}Plugins</button>
           <button class="menu-item" data-pane="about" type="button">${icon('book')}About</button>
         </div>
         <div id="settings-pane" class="settings-pane"></div>
@@ -2738,7 +3135,9 @@ function openSettings() {
         body.querySelectorAll('[data-pane]').forEach((button) => {
           button.classList.toggle('active', button.dataset.pane === name);
         });
-        if (name === 'projects') {
+        if (name === 'plugins') {
+          renderPluginManager(pane, close);
+        } else if (name === 'projects') {
           pane.innerHTML = `<h3>Projects</h3><p>Folders Command Code already has sessions for, plus any folder you add.</p>${state.projects
             .map(
               (project) =>
@@ -3184,10 +3583,31 @@ function scheduleMentions(query) {
 function pickerItems(mode, query) {
   const needle = query.toLowerCase();
   if (mode === 'command') {
-    return COMMAND_CATALOG.filter(
-      (item) =>
-        item.name.slice(1).toLowerCase().includes(needle) || item.desc.toLowerCase().includes(needle),
-    );
+    const pluginCommands = (state.plugins || [])
+      .filter((plugin) => plugin.enabled && plugin.loaded)
+      .flatMap((plugin) =>
+        (plugin.commands || []).map((command) => ({
+          kind: 'command',
+          name: `/${command.name}`,
+          desc: command.description || `${plugin.name} plugin`,
+          source: 'PLUGIN',
+          run: command.action === 'insert' ? undefined : () => openPanel(`plugin:${plugin.id}`),
+          prompt: command.action === 'insert' ? command.text || command.name : undefined,
+        })),
+      );
+    const seen = new Set();
+    return [...COMMAND_CATALOG, ...pluginCommands]
+      .filter((item) => {
+        if (seen.has(item.name)) return false;
+        seen.add(item.name);
+        return true;
+      })
+      .filter(
+        (item) =>
+          item.name.slice(1).toLowerCase().includes(needle) ||
+          item.desc.toLowerCase().includes(needle),
+      )
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
   if (mode === 'skill') {
     ensureSkills();
@@ -3629,6 +4049,7 @@ async function boot() {
     await loadProjects();
     await loadState();
     await loadNotes();
+    await loadPlugins();
   } catch (err) {
     toast(err.message);
     return;

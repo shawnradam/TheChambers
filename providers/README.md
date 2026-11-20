@@ -208,3 +208,13 @@ node tools/verify.mjs http://127.0.0.1:3002
 
 `provider-check` starts the adapter directly (no server), sends a one-line prompt, and prints the
 normalized events it received. If it shows text and a session id, the adapter is wired correctly.
+
+## Changelog
+
+### 2026-11-14 — 9b647a1
+- Added: the contract, the normalized event vocabulary, the Claude Code worked example, the
+  checklist, and `tools/provider-check.mjs`
+- Why: adding an agent must be one file, not a fork; and every agent's output must map onto the same
+  events the interface already renders
+- Verified: `provider-check cmdc` streams "ready" with zero parse errors; `verify.mjs` 15/15
+

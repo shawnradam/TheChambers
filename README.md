@@ -414,7 +414,16 @@ bin/thechambers.mjs      Portable launcher used by every platform
 package.json             npm start / npm run verify
 create-shortcut.ps1      Creates TheChambers.lnk
 tools/verify.mjs         End-to-end check
+tools/provider-check.mjs Adapter check: availability plus a throwaway turn
+providers/               Agent adapters, one file each, with the contract in providers/README.md
+docs/README.md           Documentation policy: one md per creation, changelogs required
+docs/CHANGELOG.md        Chronological, commit-linked history
 ```
+
+Every area documents itself next to its code: `server.md` for the backend, `bin/README.md` for the
+CLI, `public/README.md` for the interface, `tools/README.md` for the checks, and
+`providers/README.md` for the adapter contract. If a change touches an area without updating its
+document, the change is incomplete.
 
 ## Troubleshooting
 
