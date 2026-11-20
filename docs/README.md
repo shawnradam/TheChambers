@@ -54,6 +54,9 @@ Area docs are the working set while things are still moving. When the project is
    new reader opens first, and the root README links to it.
 4. Nothing is deleted until the merged document has been read once and verified against the code.
 
+**Status:** `docs/THE-CHAMBERS.md` exists and is the first thing a reader should open; the area docs
+remain next to their code. Future changes update the area doc and the merged document together.
+
 Until that point, do not merge early: a combined doc that is wrong in three places is worse than
 five small docs that are each right.
 

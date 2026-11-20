@@ -3,6 +3,22 @@
 Newest first. Each entry names the area, what changed, why, and how it was verified. Area docs carry
 their own smaller changelogs; this file is the whole story in order.
 
+## 2026-11-17
+
+### consolidation — docs
+- Added: `docs/THE-CHAMBERS.md`, one document covering install, use, agents, plugins, server, CLI,
+  checks, security and licence; README links it first
+- Why: the per-area docs are for working; one document is for reading
+- Rule: area docs stay next to their code and are updated together with the merged document
+
+### plugins — extension system
+- Added: `plugins/` (registry, `_template`, manager, trust dialog), `tools/plugin-check.mjs`, rail
+  panel and `/` commands; routes at `/api/plugin/<id>/…`
+- Why: FTP and similar features should not grow the core
+- Trust: a plugin runs Node in the server process; enabling is explicit
+- Landed from a parallel session and committed with the docs; not verified by the docs author beyond
+  loading `plugin-check`
+
 ## 2026-11-14
 
 ### 69319bd — interface

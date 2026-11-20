@@ -15,6 +15,11 @@
 > I love using every day — the layout, the panels and the interaction model are modelled on it.
 > All credit for that design is theirs. This is a reimplementation for Command Code, not a fork.
 
+**Full documentation:** [docs/THE-CHAMBERS.md](./docs/THE-CHAMBERS.md) — one document covering
+install, use, agents, plugins, the server, the CLI, checks and security. Area references live next to
+their code (`server.md`, `bin/README.md`, `public/README.md`, `providers/README.md`,
+`plugins/README.md`, `tools/README.md`).
+
 Formally known as cmdc. The workflow is adapted from prior art, rebuilt from scratch for
 [Command Code](https://commandcode.ai).
 
