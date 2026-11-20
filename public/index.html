@@ -68,6 +68,11 @@
     <div id="app">
       <div class="shell">
         <aside id="sidebar">
+          <div class="brand-row" aria-label="TheChambers">
+            <span class="brand-stars" aria-hidden="true"><span>✦</span><span>✧</span><span>✦</span></span>
+            <span class="brand-word">THECHAMBERS</span>
+          </div>
+
           <div class="sb-head">
             <button id="sidebar-toggle" class="icon-btn" type="button" title="Toggle sidebar" aria-label="Toggle sidebar"><svg class="icon"><use href="#i-panel-left" /></svg></button>
             <button id="new-chat" class="new-session" type="button"><svg class="icon"><use href="#i-chat-new" /></svg><span>New session</span></button>
@@ -217,6 +222,8 @@
             <span class="spacer"></span>
             <button id="model-btn" class="bar-btn" type="button" title="Model"><svg class="icon"><use href="#i-cpu" /></svg><span id="model-label">Command Code / default</span><svg class="icon caret"><use href="#i-chevron-down" /></svg></button>
             <button id="agent-btn" class="bar-btn agent" type="button" title="Agent"><span class="agent-dot"></span><span id="agent-label">Build</span><svg class="icon caret"><use href="#i-chevron-down" /></svg></button>
+            <button id="queue" class="bar-btn action" type="button" title="Send this after the current turn" hidden>Queue</button>
+            <button id="steer" class="bar-btn action" type="button" title="Stop the current turn and send this instead" hidden>Steer</button>
             <button id="stop" class="send stop" type="button" aria-label="Stop" hidden>■</button>
             <button id="send" class="send" type="submit" aria-label="Send" disabled><svg class="icon"><use href="#i-send" /></svg></button>
           </div>

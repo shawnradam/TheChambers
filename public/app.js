@@ -54,6 +54,8 @@ const els = {
   input: $('#input'),
   send: $('#send'),
   stop: $('#stop'),
+  queue: $('#queue'),
+  steer: $('#steer'),
   attach: $('#attach'),
   fileInput: $('#file-input'),
   attachments: $('#attachments'),
@@ -91,6 +93,7 @@ const state = {
   filter: '',
   activeId: null,
   busy: false,
+  queue: [],
   pollTimer: null,
   signature: '',
   messages: [],
@@ -1380,11 +1383,47 @@ function setBusy(busy) {
   state.busy = busy;
   els.send.hidden = busy;
   els.stop.hidden = !busy;
+  els.queue.hidden = !busy;
+  els.steer.hidden = !busy;
+  els.app.classList.toggle('working', busy);
   updateSendState();
+}
+
+// While a turn runs the composer offers two ordinary choices: Queue holds the text and sends it as
+// soon as this turn ends; Steer stops the turn and sends it now, in the same session.
+function queueMessage() {
+  const text = els.input.value.trim();
+  if (!text) return false;
+  state.queue.push(text);
+  els.input.value = '';
+  autoGrow();
+  updateSendState();
+  toast(state.queue.length === 1 ? 'Queued for after this turn.' : `${state.queue.length} messages queued.`);
+  return true;
+}
+
+function steerMessage() {
+  const text = els.input.value.trim();
+  if (!text) return;
+  els.input.value = '';
+  autoGrow();
+  updateSendState();
+  stopTurn();
+  toast('Stopping, then sending this instead…');
+  const started = Date.now();
+  const wait = setInterval(() => {
+    if (!state.busy || Date.now() - started > 8000) {
+      clearInterval(wait);
+      sendTurn(text);
+    }
+  }, 250);
 }
 
 function updateSendState() {
   els.send.disabled = state.busy || (!els.input.value.trim() && !state.attachments.length);
+  const hasText = Boolean(els.input.value.trim());
+  els.queue.disabled = !hasText;
+  els.steer.disabled = !hasText;
 }
 
 // ---------------------------------------------------------------------------
@@ -1527,6 +1566,13 @@ async function sendTurn(text) {
     els.goal.classList.remove('on');
     updateContextRing();
     renderSessionCard();
+
+    // A queued message goes out as soon as the turn that held it is done.
+    if (state.queue.length) {
+      const next = state.queue.shift();
+      toast(state.queue.length ? `Sending queued message (${state.queue.length} left).` : 'Sending queued message.');
+      setTimeout(() => sendTurn(next), 400);
+    }
   }
 }
 
@@ -3805,7 +3851,12 @@ els.composer.addEventListener('submit', (event) => {
   closePicker();
   const typed = els.input.value.trim();
   const files = state.attachments.slice();
-  if ((!typed && !files.length) || state.busy) return;
+  if (!typed && !files.length) return;
+  // Pressing Enter mid-turn queues the message rather than doing nothing.
+  if (state.busy) {
+    queueMessage();
+    return;
+  }
 
   let text = typed || 'Take a look at the attached file.';
   if (state.goal && !/^goal:/i.test(text)) text = `Goal: ${text}`;
@@ -3845,6 +3896,8 @@ els.input.addEventListener('keydown', (event) => {
 });
 
 els.stop.addEventListener('click', stopTurn);
+els.queue.addEventListener('click', queueMessage);
+els.steer.addEventListener('click', steerMessage);
 
 els.suggestions.addEventListener('click', (event) => {
   const chip = event.target.closest('.chip');

@@ -5,6 +5,16 @@ their own smaller changelogs; this file is the whole story in order.
 
 ## 2026-11-20
 
+### interface — wordmark stars, Queue and Steer
+- Added: THECHAMBERS wordmark above the sidebar header, with three stars that pop in sequence while
+  a turn runs (reduced-motion safe)
+- Added: Queue and Steer during a turn; Queue holds the text until the turn ends, Enter mid-turn
+  queues, Steer stops the turn and sends immediately in the same session
+- Why: no way to queue a follow-up or redirect a running agent existed; checked code and full
+  history and confirmed neither had ever been implemented here
+- Verified: working class toggles `star-pop`, buttons appear only while busy, queue records and
+  clears the input, buttons hide when the turn ends
+
 ### interface — type scale and menu icon
 - Changed: the menu button is a bullet-list icon (three rows of dot + horizontal bar, left-aligned,
   20px) instead of the horizontal hamburger or vertical strokes

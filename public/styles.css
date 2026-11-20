@@ -2985,3 +2985,84 @@ a:hover {
     max-height: 58dvh;
   }
 }
+
+/* Wordmark with stars that pop while a turn is running. */
+.brand-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 12px 2px;
+  user-select: none;
+}
+
+.brand-stars {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  height: 12px;
+}
+
+.brand-stars span {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--primary-text, #e59a69);
+  opacity: 0;
+  transform: scale(0.3) rotate(-25deg);
+}
+
+.brand-word {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  color: var(--muted);
+}
+
+#app.working .brand-stars span {
+  animation: star-pop 1.5s ease-in-out infinite;
+}
+
+#app.working .brand-stars span:nth-child(2) {
+  animation-delay: 0.28s;
+}
+
+#app.working .brand-stars span:nth-child(3) {
+  animation-delay: 0.56s;
+}
+
+@keyframes star-pop {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-25deg);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1.2) rotate(10deg);
+  }
+  60% {
+    opacity: 0.65;
+    transform: scale(0.85) rotate(-5deg);
+  }
+}
+
+/* Queue and Steer: only while a turn is running. */
+.bar-btn.action {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--primary-text, #e59a69);
+  padding: 0 9px;
+}
+
+.bar-btn.action:disabled {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app.working .brand-stars span {
+    animation: none;
+    opacity: 0.8;
+    transform: none;
+  }
+}
