@@ -5,17 +5,21 @@ their own smaller changelogs; this file is the whole story in order.
 
 ## 2026-11-20
 
-### interface — header indicator, Queue and Steer
+### interface — header indicator, Docket and Gavel
 - Added: THECHAMBERS wordmark above the sidebar header with the chat's braille spinner beside it
   (same 80ms frames, smaller and dimmer), visible only while a turn runs
-- Added: Queue and Steer during a turn; Queue holds the text until the turn ends, Enter mid-turn
-  queues, Steer stops the turn and sends immediately in the same session
+- Added: Docket and Gavel during a turn. Docket files the text and sends it when the turn ends, shows
+  the count in its label, and opens the filed list on an empty composer where items can be dropped or
+  cleared. Gavel stops the turn and sends immediately in the same session. Enter mid-turn files;
+  Ctrl+Enter is the gavel; `/docket` and `/gavel` mirror both from the picker
+- Changed: first labelled "Queue / Steer" — borrowed, generic words — then renamed to this project's
+  own vocabulary
 - Why: no way to queue a follow-up or redirect a running agent existed, and the header should signal
   work when the thread is out of view; checked code and full history and confirmed neither action had
   ever been implemented here
-- Verified: the working class toggles `brand-frame-breathe`, the header frame is invisible and
-  unanimated when idle, buttons appear only while busy, queue records and clears the input, buttons
-  hide when the turn ends
+- Verified: idle hides both and leaves the header frame unanimated; filing shows `Docket 1` then
+  `Docket 2` and clears the input; the list drops to `Docket 1` after removing an item; the picker
+  lists `/docket` and `/gavel`; no console errors
 
 ### interface — type scale and menu icon
 - Changed: the menu button is a bullet-list icon (three rows of dot + horizontal bar, left-aligned,

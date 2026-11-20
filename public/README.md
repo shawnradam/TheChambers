@@ -32,24 +32,31 @@ Four static files, no framework, no build step. `index.html` holds the markup an
   wordmark while a turn is running — smaller, quieter, and driven by the same 80ms ticker — so the
   header shows this machine is busy even when the thread is scrolled away. It rests invisible when
   idle.
-- **Queue / Steer**: while a turn runs, the composer shows both. *Queue* holds the text and sends it
-  when the current turn ends (Enter does the same mid-turn). *Steer* stops the turn and sends the
-  text now, in the same session.
+- **Docket / Gavel**: while a turn runs, the composer shows both. *Docket* files your text and hears
+  it as soon as the turn ends — the button carries the count, and pressing it with an empty composer
+  opens the list, where each item can be dropped or the whole docket cleared. *Gavel* stops the turn
+  and sends your text instead, in the same session. Enter mid-turn files to the docket; **Ctrl+Enter**
+  is the gavel. Both names are the project's own (a docket is the list of matters to be heard, a gavel
+  interrupts the proceeding) — no borrowed vocabulary. Commands: `/docket`, `/gavel`.
 
 ## Changelog
 
-### 2026-11-20 — header indicator, Queue and Steer
+### 2026-11-20 — header indicator, Docket and Gavel
 - Added: THECHAMBERS wordmark above the sidebar header with the chat's braille spinner beside it —
   same 80ms frames, smaller and dimmer — visible only while a turn runs (static under reduced motion)
-- Added: Queue and Steer in the composer, visible only during a turn. Queue sends after the current
-  turn; Enter mid-turn queues too. Steer stops the turn and sends the text immediately in the same
-  session
+- Added: **Docket** and **Gavel** in the composer, visible only during a turn. Docket files the text
+  and sends it when the current turn ends; the button shows the count and opens the filed list on an
+  empty composer, where items can be dropped or cleared. Gavel stops the turn and sends the text
+  immediately in the same session. Enter mid-turn files; Ctrl+Enter is the gavel; `/docket` and
+  `/gavel` do the same from the picker
+- Changed: these were first labelled "Queue / Steer" — borrowed, generic words. Renamed to this
+  project's own vocabulary, with the docket list and count added
 - Why: there was no way to line up a follow-up or redirect a running agent; both actions existed in
   the tool this layout was modelled on but never in this codebase — confirmed against the code and
   the full history. The header now signals work when the thread is out of view
-- Verified: the working class toggles `brand-frame-breathe`, the header frame stays at opacity 0 when
-  idle and stops animating; Queue shows only while busy, records one item, clears the input, and
-  both actions hide when the turn ends
+- Verified: idle hides both and leaves the header frame at opacity 0 and unanimated; filing shows
+  `Docket 1` then `Docket 2` and clears the input; the list renders each filed item and removing one
+  drops the count to `Docket 1`; `/docket` and `/gavel` appear in the picker; no console errors
 
 ### 2026-11-20 — type scale and the menu icon
 - Changed: menu button is a bullet-list icon — three rows of a filled dot plus a horizontal bar,

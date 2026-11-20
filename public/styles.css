@@ -3030,7 +3030,7 @@ a:hover {
   }
 }
 
-/* Queue and Steer: only while a turn is running. */
+/* Docket and Gavel: only while a turn is running. */
 .bar-btn.action {
   border: 1px solid var(--line);
   border-radius: 999px;
