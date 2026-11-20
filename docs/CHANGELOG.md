@@ -5,15 +5,17 @@ their own smaller changelogs; this file is the whole story in order.
 
 ## 2026-11-20
 
-### interface — wordmark stars, Queue and Steer
-- Added: THECHAMBERS wordmark above the sidebar header, with three stars that pop in sequence while
-  a turn runs (reduced-motion safe)
+### interface — header indicator, Queue and Steer
+- Added: THECHAMBERS wordmark above the sidebar header with the chat's braille spinner beside it
+  (same 80ms frames, smaller and dimmer), visible only while a turn runs
 - Added: Queue and Steer during a turn; Queue holds the text until the turn ends, Enter mid-turn
   queues, Steer stops the turn and sends immediately in the same session
-- Why: no way to queue a follow-up or redirect a running agent existed; checked code and full
-  history and confirmed neither had ever been implemented here
-- Verified: working class toggles `star-pop`, buttons appear only while busy, queue records and
-  clears the input, buttons hide when the turn ends
+- Why: no way to queue a follow-up or redirect a running agent existed, and the header should signal
+  work when the thread is out of view; checked code and full history and confirmed neither action had
+  ever been implemented here
+- Verified: the working class toggles `brand-frame-breathe`, the header frame is invisible and
+  unanimated when idle, buttons appear only while busy, queue records and clears the input, buttons
+  hide when the turn ends
 
 ### interface — type scale and menu icon
 - Changed: the menu button is a bullet-list icon (three rows of dot + horizontal bar, left-aligned,

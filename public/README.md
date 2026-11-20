@@ -28,25 +28,28 @@ Four static files, no framework, no build step. `index.html` holds the markup an
 - **Help**: "How this works" opens on first visit per device, and any time from ⋯ or `/help`.
 - **Credits**: ⋯ → "Version x.y.z" opens a credits popup; it does not navigate away.
 - **Picker**: `/` opens the command menu, `@` mentions files, `$` lists skills.
-- **Stars**: three glyphs above the THECHAMBERS wordmark pop in sequence while a turn is running,
-  and rest at zero opacity when idle.
+- **Header indicator**: the same braille frames the chat bubble uses run beside the THECHAMBERS
+  wordmark while a turn is running — smaller, quieter, and driven by the same 80ms ticker — so the
+  header shows this machine is busy even when the thread is scrolled away. It rests invisible when
+  idle.
 - **Queue / Steer**: while a turn runs, the composer shows both. *Queue* holds the text and sends it
   when the current turn ends (Enter does the same mid-turn). *Steer* stops the turn and sends the
   text now, in the same session.
 
 ## Changelog
 
-### 2026-11-20 — wordmark stars, Queue and Steer
-- Added: THECHAMBERS wordmark above the sidebar header with three star glyphs that pop while a turn
-  runs and vanish when idle (disabled under reduced motion)
+### 2026-11-20 — header indicator, Queue and Steer
+- Added: THECHAMBERS wordmark above the sidebar header with the chat's braille spinner beside it —
+  same 80ms frames, smaller and dimmer — visible only while a turn runs (static under reduced motion)
 - Added: Queue and Steer in the composer, visible only during a turn. Queue sends after the current
   turn; Enter mid-turn queues too. Steer stops the turn and sends the text immediately in the same
   session
 - Why: there was no way to line up a follow-up or redirect a running agent; both actions existed in
   the tool this layout was modelled on but never in this codebase — confirmed against the code and
-  the full history
-- Verified: `#app.working` toggles the `star-pop` animation, Queue shows only while busy, clicking
-  it records one item and clears the input, and both hide again when the turn ends
+  the full history. The header now signals work when the thread is out of view
+- Verified: the working class toggles `brand-frame-breathe`, the header frame stays at opacity 0 when
+  idle and stops animating; Queue shows only while busy, records one item, clears the input, and
+  both actions hide when the turn ends
 
 ### 2026-11-20 — type scale and the menu icon
 - Changed: menu button is a bullet-list icon — three rows of a filled dot plus a horizontal bar,

@@ -1134,12 +1134,16 @@ function startThinking(bubble) {
   paint();
   thinkingTimer = setInterval(paint, 2800);
 
+  // One ticker drives both marks: the chat bubble and the tiny one beside the wordmark, so the
+  // header always shows that this machine is working even when the thread is scrolled away.
   let frame = 0;
   frameTimer = setInterval(() => {
-    const mark = bubble && bubble.isConnected ? bubble.querySelector('.c-frame') : null;
-    if (!mark) return;
+    const inChat = bubble && bubble.isConnected ? bubble.querySelector('.c-frame') : null;
+    const inHeader = document.querySelector('.brand-frame');
+    if (!inChat && !inHeader) return;
     frame = (frame + 1) % THINKING_FRAMES.length;
-    mark.textContent = THINKING_FRAMES[frame];
+    if (inChat) inChat.textContent = THINKING_FRAMES[frame];
+    if (inHeader) inHeader.textContent = THINKING_FRAMES[frame];
   }, 80);
 }
 
