@@ -277,6 +277,14 @@ The composer has three triggers:
 - **Plan** — passes `--plan`: read-only planning.
 - **Full access** — passes `--yolo`: edits files and runs commands with no approval prompt.
 
+### Workrooms
+
+Open **Settings → Workrooms** as ID 1 Admin to create role-based worker accounts and assign them to a task. Each worker signs in at `/workrooms` using their email and a generated password, then sees their assigned tasks and private room messages.
+
+Planner and Designer submit a brief for Debugger review and Admin approval. Programmer implements it in the Git workspace, then submits a commit for Debugger testing and Admin approval. The Programmer account can push the approved commit to GitHub from the workroom.
+
+See [TheChambers Workrooms guide](THECHAMBERS.md) for account management, handoffs, and usage allowances.
+
 ## One session, two views
 
 Command Code has no attach API: a running terminal holds its conversation in memory and writes the

@@ -1,5 +1,35 @@
 /* TheChambers interface styles. */
 
+.worker-login-link { display: inline-block; margin-top: 1rem; color: var(--link, var(--primary-text)); }
+.workrooms-page { display: block; height: auto; min-height: 100dvh; overflow: auto; }
+.workrooms { width: min(100% - 2rem, 47rem); margin: 2rem auto 4rem; }
+.workrooms header, .workroom-actions, #workroom-account {
+  display: flex; gap: .65rem; align-items: center; flex-wrap: wrap;
+}
+.workrooms header h1 { margin: 0; margin-right: auto; }
+.workrooms h2 { margin: 0 0 .8rem; font-size: 1.2rem; }
+.workrooms h3 { margin: 0 0 .25rem; font-size: 1rem; }
+.workrooms section { padding: clamp(.75rem, 3vw, 1.4rem); border: 1px solid var(--border); border-radius: .75rem; background: var(--card); margin-bottom: .85rem; }
+.workrooms form { display: grid; gap: .55rem; margin: .75rem 0; }
+.workrooms form button { justify-self: start; }
+.workrooms label { display: grid; gap: .24rem; min-width: 0; }
+.workrooms input, .workrooms textarea, .workrooms select, .workrooms button {
+  min-height: 2.5rem; border: 1px solid var(--edge); border-radius: .5rem;
+  padding: .45rem .65rem; background: var(--bg); color: var(--fg); font: inherit;
+}
+.workrooms button, .workrooms summary { cursor: pointer; }
+.workrooms button:hover { background: var(--elevated); }
+.workrooms button:disabled { opacity: .55; cursor: wait; }
+.workrooms textarea { resize: vertical; }
+.workrooms a { color: var(--link, var(--primary-text)); }
+.workrooms small { color: var(--muted); }
+.workrooms code { display: block; overflow-wrap: anywhere; }
+.workrooms article, .workrooms details, .workroom-brief { border-top: 1px solid var(--border); margin-top: .8rem; padding-top: .8rem; }
+.workrooms ul { margin: 0; padding: 0; list-style: none; }
+.workrooms li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .25rem; padding: .35rem 0; }
+.workroom-message { white-space: pre-wrap; overflow-wrap: anywhere; margin: .4rem 0; }
+.workroom-error { color: var(--error); }
+
 :root {
   --bg: #171515;
   --sidebar: #121111;

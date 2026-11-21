@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workrooms · TheChambers</title>
+  <meta name="theme-color" content="#1b1718">
+  <link rel="icon" href="/logo-32.png" type="image/png">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/workrooms.js" defer></script>
+</head>
+<body class="workrooms-page">
+  <main class="workrooms">
+    <header>
+      <h1>Workrooms</h1>
+      <div id="workroom-account"><a href="/">Admin sign-in</a></div>
+      <button type="button" id="workroom-refresh" hidden>Refresh rooms</button>
+    </header>
+    <p id="workroom-status" role="status"></p>
+    <section id="workroom-login" hidden>
+      <h2>Worker sign-in</h2>
+      <form data-route="login">
+        <label>Email<input name="email" type="email" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+    <div id="workroom-password"></div>
+    <div id="workroom-board"></div>
+  </main>
+</body>
+</html>

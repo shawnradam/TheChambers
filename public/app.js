@@ -3314,6 +3314,7 @@ function openSettings() {
           <button class="menu-item" data-pane="updates" type="button">${icon('refresh')}Updates</button>
           <button class="menu-item" data-pane="projects" type="button">${icon('folder')}Projects</button>
           <button class="menu-item" data-pane="plugins" type="button">${icon('plug')}Plugins</button>
+          <a class="menu-item" href="/workrooms">${icon('menu')}Workrooms</a>
           <button class="menu-item" data-pane="about" type="button">${icon('book')}About</button>
         </div>
         <div id="settings-pane" class="settings-pane"></div>

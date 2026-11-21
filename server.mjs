@@ -11,6 +11,7 @@
 import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs';
+import {createWorkrooms} from './workrooms.mjs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {spawn, execFile, execFileSync, spawnSync} from 'node:child_process';
@@ -132,6 +133,10 @@ function ensureFile(file, make) {
 
 const PASSWORD = ensureFile(PASSWORD_FILE, () => crypto.randomBytes(24).toString('base64url'));
 const SECRET = ensureFile(SECRET_FILE, () => crypto.randomBytes(32).toString('hex'));
+const workroomsRoute = createWorkrooms({
+  file: path.join(CONFIG_DIR, 'workrooms.json'),
+  secret: SECRET, readJson, json, runProcess, loginAllowed, noteLoginFailure,
+});
 
 if (PASSWORD.length < 16) {
   console.error(`[thechambers] The password in ${PASSWORD_FILE} is shorter than 16 characters. Refusing to start.`);
@@ -1095,6 +1100,7 @@ async function startTurn(req, res) {
 
 const STATIC = {
   '/app.js': ['public/app.js', 'text/javascript; charset=utf-8'],
+  '/workrooms.js': ['public/workrooms.js', 'text/javascript; charset=utf-8'],
   '/login.js': ['public/login.js', 'text/javascript; charset=utf-8'],
   '/styles.css': ['public/styles.css', 'text/css; charset=utf-8'],
   '/logo-32.png': ['public/logo-32.png', 'image/png'],
@@ -1251,8 +1257,16 @@ const handler = async (req, res) => {
   }
   const pathname = url.pathname;
   const ip = req.socket.remoteAddress || 'unknown';
+  const secureCookie = req.socket.encrypted ||
+    ((ip === '127.0.0.1' || ip === '::1') && req.headers['x-forwarded-proto'] === 'https');
 
   try {
+    if (req.method === 'GET' && pathname === '/workrooms') {
+      return serveStatic(res, 'public/workrooms.html', 'text/html; charset=utf-8');
+    }
+    if (pathname.startsWith('/api/workrooms/')) {
+      return await workroomsRoute(req, res, url, isAuthed(req), secureCookie);
+    }
     if (req.method === 'GET' && pathname === '/health') {
       const repo = repoState();
       return json(res, 200, {

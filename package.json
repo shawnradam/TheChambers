@@ -35,6 +35,8 @@
     "providers",
     "public",
     "server.mjs",
+    "workrooms.mjs",
+    "THECHAMBERS.md",
     "tools",
     "LICENSE",
     "README.md"

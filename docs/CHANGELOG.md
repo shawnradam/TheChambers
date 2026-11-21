@@ -5,6 +5,10 @@ their own smaller changelogs; this file is the whole story in order.
 
 ## 2026-11-21
 
+### workrooms
+- Added Admin-managed worker accounts with generated passwords, private task rooms, and role-based usage allowances.
+- Added plan and design handoffs, Debugger review, Admin approval, and Programmer-only GitHub push of the approved commit.
+
 ### interface
 - Added a dimensional logo treatment to the login screen, About pane, and Credits.
 

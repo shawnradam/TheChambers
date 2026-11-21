@@ -122,3 +122,7 @@ sessions, little on large refactors — the agent's system prompt is outside our
 
 ### 2026-11-13 — 05a2870
 - Fixed: malformed JSON bodies return 400 instead of 500 and stay out of the log
+
+## Workrooms
+
+The `/workrooms` page uses the existing Admin session for ID 1 and a separate scoped worker cookie for role accounts. The server filters tasks and private room notes by assignment. Admin manages workers and task assignments. The workflow checks role, phase, and commit hash before accepting verification, approval, or a GitHub push.
