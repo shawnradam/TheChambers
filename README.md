@@ -1,5 +1,7 @@
 # TheChambers
 
+<img src="./public/logo-512.png" alt="TheChambers logo" width="144">
+
 > ### Unofficial — read this first
 >
 > TheChambers is a **personal project**, not an official terminal or client for
